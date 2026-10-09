@@ -11,7 +11,8 @@ Nyílt forráskódú RISC-V soft-core processzor (Potato RV32I) integrálása Xi
 - **Szoftver:** Bare-metal C tesztkörnyezet, driver és cikluspontos benchmark mérés.
 
 ## Dokumentáció
-- **Fejlesztési napló és eredmények (Sprint Log):** [`docs/Sprint_Naplo.md`](docs/Sprint_Naplo.md)
+- **RISC-V Soft-Core Részletes Architektúra Dokumentáció:** [`docs/Potato_RISCV_Softcore_Dokumentacio.md`](docs/Potato_RISCV_Softcore_Dokumentacio.md)
+- **Fejlesztési napló és eredmények:** [`docs/Sprint_Naplo.md`](docs/Sprint_Naplo.md)
 - **Fejlesztési és sprint-terv:** [`docs/Fejlesztési_terv.md`](docs/Fejlesztési_terv.md)
 - **Rendszerterv és részletes specifikáció:** [`docs/Rendszerterv_es_Specifikacio.md`](docs/Rendszerterv_es_Specifikacio.md)
 
