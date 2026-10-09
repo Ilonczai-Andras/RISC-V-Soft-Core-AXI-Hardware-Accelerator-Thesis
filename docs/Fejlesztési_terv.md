@@ -56,7 +56,7 @@ Mivel a fejlesztés túlnyomó része otthon, fizikai FPGA hardver nélkül zajl
 > - **2 féléves modell (Témalabor + Diplomamunka, ~26–28 hét):** A teljes 13 sprint + puffer lépésről lépésre végrehajtható.
 > - **1 féléves modell (~14 hét):** A sprintek összevonandók (1 hetes sprintek, vagy a szimulációk gyorsított párhuzamosítása).
 
-### Fázis 0 – Specifikáció és alapozás (Sprint 0, 2 hét)
+### Fázis 0 – Specifikáció és alapozás (Sprint 0, 2 hét) (✅ KÉSZ ÉS LEZÁRVA)
 * **Cél:** Pontos matematikai és hardveres követelményrendszer felállítása a konzulenssel egyeztetve.
 * **Feladatok:**
   * RISC-V privilégium-specifikáció (M-mode, trap/CSR logika) és ARM AMBA AXI4 (Lite & Stream) protokollok áttekintése.
@@ -66,26 +66,26 @@ Mivel a fejlesztés túlnyomó része otthon, fizikai FPGA hardver nélkül zajl
 
 ---
 
-### Fázis 1 – Soft-core processzor integráció és szimulációs bring-up
+### Fázis 1 – Soft-core processzor integráció és szimulációs bring-up (✅ KÉSZ ÉS LEZÁRVA)
 
-#### Sprint 1 (2 hét): Fejlesztői környezet és toolchain
+#### Sprint 1 (2 hét): Fejlesztői környezet és toolchain (✅ KÉSZ)
 * RISC-V GNU toolchain felállítása (`riscv-gnu-toolchain`, `--with-arch=rv32i --with-abi=ilp32`).
 * Vivado 2023.2 projekt létrehozása a cél FPGA alkatrészre (Artix-7), Potato VHDL források integrálása.
 * Szimulációs környezet felállítása (Vivado XSIM és/vagy GHDL nyílt forráskódú szimulátor a gyors regressziókhoz).
 * **Mérföldkő:** A referencia SoC szimulációban fordul, az instrukció-memória inicializálható.
 
-#### Sprint 2 (2 hét): Szimulációs SoC bring-up és virtuális UART
+#### Sprint 2 (2 hét): Szimulációs SoC bring-up és virtuális UART (✅ KÉSZ)
 * A Potato referencia SoC (Wishbone, UART, Timer, GPIO) testbench felépítése.
-* Bare-metal program: C kód fordítása, memória-kép (`.mem`) generálása.
+* Bare-metal program: C kód fordítása, memória-kép (`.coe`) generálása.
 * Virtuális UART monitor megírása VHDL testbench-ben (a konzolra írja a szimulált processzor karaktereit).
-* Szintézis- és implementáció-futtatás otthon: ellenőrizni, hogy a mag tiszta és időzítés-helyes bitstreamet képez a célchipre.
-* **Mérföldkő:** A „Hello World!” és a timer-megszakítás szimulációban lefut és kiíródik; a projekt hiba nélkül szintetizál a cél FPGA-ra.
+* Szintézis- és implementáció-futtatás otthon: ellenőrizni, hogy a mag tiszta és időzítés-helyes bitstreamet képez a célchipre (`0 errors`, `0 latches`).
+* **Mérföldkő:** A „Hello World!” szimulációban lefut és kiíródik; a projekt hiba nélkül szintetizál a cél FPGA-ra.
 
-#### Sprint 3 (2 hét): Megszakításkezelés és szimulációs debug
-* A Potato megszakításvezérlőjének (max. 8 maszkolható IRQ) tesztelése szimulációban (Timer és külső események).
-* C nyelvű trap/interrupt handler írása és nyugtázási mechanizmus ellenőrzése.
-* Debug infrastruktúra: szoftveres szinten UART diagnosztika; hardveres szinten Xilinx ILA magok előkészítése a későbbi laboros méréshez.
-* **Mérföldkő:** Stabil, szimulációban igazolt megszakításkezelés C szinten.
+#### Sprint 3 (2 hét): Megszakításkezelés és szimulációs debug (✅ KÉSZ)
+* A Potato megszakításvezérlőjének (max. 8 maszkolható IRQ) tesztelése szimulációban (Timer0 IRQ 0).
+* C nyelvű trap/interrupt handler írása és hardveres nyugtázási mechanizmus ellenőrzése (`exception_handler`, CSR regiszterek: `mie`, `mstatus`, `mcause`).
+* Debug infrastruktúra: szoftveres szinten virtuális UART diagnosztika; szimulációs hullámforma-verifikáció (`docs/images/timer.png`).
+* **Mérföldkő:** Stabil, szimulációban igazolt periodikus megszakításkezelés C szinten (`[IRQ 0] Timer tick: 1, 2, 3`).
 
 ---
 
