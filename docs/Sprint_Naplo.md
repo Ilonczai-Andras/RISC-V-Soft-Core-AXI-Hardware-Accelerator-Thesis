@@ -9,7 +9,8 @@ Ez a dokumentum a projekt lépésről lépésre történő fejlesztési történ
 1. [Sprint 0 – Rendszerterv és Specifikáció (✅ Kész)](#sprint-0--rendszerterv-és-specifikáció)
 2. [Sprint 1 – Fejlesztői Környezet, Toolchain és Vivado Bring-up (✅ Kész)](#sprint-1--fejlesztői-környezet-toolchain-és-vivado-bring-up)
 3. [Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver (✅ Kész)](#sprint-2--szimulációs-bring-up-és-bare-metal-szoftver)
-4. [Sprint 3 – Megszakításkezelés és Rendszerstabilitás (⏳ Következő lépés)](#sprint-3--megszakításkezelés-és-rendszerstabilitás-következő-lépés)
+4. [Sprint 3 – Megszakításkezelés és Rendszerstabilitás (✅ Kész)](#sprint-3--megszakításkezelés-és-rendszerstabilitás)
+5. [Sprint 4 – Wishbone ↔ AXI4-Lite Híd (⏳ Következő lépés)](#sprint-4--wishbone--axi4-lite-híd-specifikáció-és-tervezés-következő-lépés)
 
 ---
 
@@ -174,8 +175,73 @@ A szintézis hiba és kritikus figyelmeztetés nélkül lefutott (`0 Errors`, `0
 
 ---
 
-## Sprint 3 – Megszakításkezelés és Rendszerstabilitás (Következő lépés)
+## Sprint 3 – Megszakításkezelés és Rendszerstabilitás
+*Státusz: ✅ KÉSZ ÉS LEZÁRVA*
+
+### 1. Célkitűzés
+A RISC-V Machine-mode (M-mode) hardveres megszakításkezelésének és trap logikájának megvalósítása és verifikálása a Potato soft-core processzoron, felkészítve a rendszert a későbbi AXI hardveres gyorsító befejezés-megszakításának (IRQ 5 - Accelerator Done) stabil fogadására.
+
+### 2. A tesztprogram felépítése (`vendor/potato/software/timer_test/`)
+Egy dedikált, a `hello` alkalmazástól független mérőszoftvert hoztunk létre:
+- **`main.c`:**
+  - UART0 inicializálása (115200 baud @ 50 MHz).
+  - Timer0 felkonfigurálása 2.0 ms-os periódusra (100 000 órajelciklus @ 50 MHz, $100\,000 \times 20\text{ ns} = 2\text{ ms}$).
+  - Megszakítások engedélyezése: platform IRQ 0 engedélyezése a `mie` CSR regiszter 24. bitjén (`potato_enable_irq(0)`), majd globális engedélyezés az `mstatus` regiszter MIE bitjén (`potato_enable_interrupts()`).
+  - Főciklus: energiatakarékos alvás `wfi` (Wait For Interrupt) utasítással a megszakítások érkezéséig.
+- **`exception_handler()` (Trap Handler C rutin):**
+  - A `cause` regiszter vizsgálata: ellenőrzi a legfelső bitet (Interrupt jelző) és az IRQ forrást (`PLATFORM_IRQ_TIMER0`).
+  - **Hardveres nyugtázás (ACK):** A számláló nullázása és újraindítása (`timer_start(&timer0)`), amely azonnal '0'-ba ejti vissza a hardveres `irq` vonalat.
+  - Sorszámozott diagnosztikai üzenet küldése a soros konzolra (`[IRQ 0] Timer tick: X`).
+- **`Makefile`:** A szoftver közvetlenül a ROM memóriaterületére (`0xffff8000`) linkelve készül (`bootloader.ld`).
+
+### 3. Időzítési analízis és méretezés
+A szimuláció során az időzítés matematikai pontossággal igazolta a működést:
+1. **Bevezető szöveg átvitele:** A 92 karakteres nyitóüzenet kiküldése 115200 baud mellett $92 \times 86.8\ \mu\text{s} \approx 7.99\text{ ms}$-ot vett igénybe a szimulált időben.
+2. **Timer indítás:** A processzor $t \approx 7.99\text{ ms}$-nál lépett ki a nyitóüzenetből és indította el a hardveres timert.
+3. **Periodikus megszakítások:** A 2.0 ms-os ciklusidőnek megfelelően:
+   - **1. Megszakítás (Tick 1):** $t \approx 7.99\text{ ms} + 2.0\text{ ms} \approx \mathbf{10.0\text{ ms}}$
+   - **2. Megszakítás (Tick 2):** $t \approx 10.0\text{ ms} + 2.0\text{ ms} \approx \mathbf{12.0\text{ ms}}$
+   - **3. Megszakítás (Tick 3):** $t \approx 12.0\text{ ms} + 2.0\text{ ms} \approx \mathbf{14.0\text{ ms}}$
+
+### 4. Szimulációs Eredmény (Vivado XSIM)
+A `run 15 ms` parancs lefutása után a Vivado Tcl konzolon és a hullámforma ablakban hibátlanul megjelent a teljes folyamat:
+
+```text
+relaunch_sim: Time (s): cpu = 00:00:01 ; elapsed = 00:00:07 . Memory (MB): peak = 2578.770 ; gain = 0.000
+run 15 ms
+
+=== Potato RISC-V Timer IRQ Test ===
+Timer0 configured (2 ms period). Enabling IRQ...
+[IRQ 0] Timer tick: 1
+[IRQ 0] Timer tick: 2
+[IRQ 0] Timer tick: 3
+run: Time (s): cpu = 00:00:13 ; elapsed = 00:01:48 . Memory (MB): peak = 2578.770 ; gain = 0.000
+```
+
+#### Szimulációs hullámforma és konzol kimenet:
+![Timer Megszakítás Vivado Szimuláció](images/timer.png)
+
+#### A hullámforma részletes analízise (Időzítési verifikáció):
+1. **$0.0\text{ ms} \rightarrow 8.0\text{ ms}$ (Nyitóüzenet átvitele):** 
+   - Az `uart0_txd` vonalon sűrű, folyamatos adatcsomagok láthatók, amíg a processzor a 92 karakteres nyitó szöveget kiküldi a soros vonalra.
+2. **$8.0\text{ ms} \rightarrow 10.0\text{ ms}$ (Első csendes szakasz - Várakozás az IRQ-ra):** 
+   - A szöveg lefutása után a processzor elindítja a Timer0-t és `wfi` (Wait For Interrupt) utasítással alvó állapotba kerül.
+   - Az `uart0_txd` vonal inaktív magas ('1') szintre áll be pontosan **2.0 ms időtartamra**, miközben a számláló a háttérben növekszik.
+3. **$10.0\text{ ms}$ (1. Megszakítás - Tick 1):** 
+   - A Timer eléri a 100 000 ciklust, a processzor belép a trap handlerbe, törli az időzítőt és kiküldi az `[IRQ 0] Timer tick: 1` üzenetet (jól látható, diszkrét UART adatcsomag).
+4. **$12.0\text{ ms}$ és $14.0\text{ ms}$ (2. és 3. Megszakítás - Tick 2 és 3):** 
+   - A megszakítások pontosan a beállított 2.0 ms-os intervallumokban ismétlődnek, igazolva a hardveres periodikus újrainicializálást és a megszakítási lánc teljes stabilitását.
+
+### 5. Mérföldkő Eredmény és Értékelés
+A **Sprint 3 100%-ban sikeresen lezárult**:
+1. **Hardveres trap mechanizmus:** A Potato processzor csővezetéke hardveresen hibátlanul kezeli a külső aszinkron megszakításokat, elágazik az `mtvec` címre, majd `mret` után visszaáll a megszakított programpontra.
+2. **Kontextusmentés:** A `start.S` által végzett teljes regisztermentés és visszaállítás stabil, egymás után 3 egymást követő megszakítás alatt sem lépett fel regisztersérülés vagy veremtúlcsordulás.
+3. **Készenlét az AXI gyorsítóhoz:** A megszakítási lánc validálva van; a későbbi mátrixszorzó gyorsító `Done` megszakítása (IRQ 5) pontosan ugyanezen a megbízható infrastruktúrán fog futni.
+
+---
+
+## Sprint 4 – Wishbone ↔ AXI4-Lite Híd Specifikáció és Tervezés (Következő lépés)
 *Státusz: ⏳ KÖVETKEZŐ LÉPÉS*
 
 ### Célkitűzés
-A processzor megszakításvezérlőjének (Interrupt Controller) és az időzítőnek (Timer IRQ) a tesztelése bare-metal C környezetből, felkészítve a rendszert a hardveres gyorsító befejezés-megszakításának (Done IRQ) fogadására.
+Belépés a **Fázis 2-be (AXI Buszinterfész tervezése)**: a processzor natív Wishbone buszát az ARM AMBA AXI4-Lite slave modulokkal összekötő protokoll-konverter (Wishbone Master $\rightarrow$ AXI4-Lite Master híd) VHDL tervezése és önálló testbench szimulációja.
