@@ -9,6 +9,8 @@
 #include "uart.h"
 #include "timer.h"
 
+#define TIMER_MS_TO_TICKS(ms) ((uint32_t)((ms) * (PLATFORM_SYSCLK_FREQ / 1000U)))
+
 static struct uart uart0;
 static struct timer timer0;
 static volatile uint32_t timer_ticks = 0;
@@ -39,7 +41,7 @@ int main(void)
 
     timer_initialize(&timer0, (volatile void *) PLATFORM_TIMER0_BASE);
     timer_stop(&timer0);
-    timer_set_compare(&timer0, 100000);
+    timer_set_compare(&timer0, TIMER_MS_TO_TICKS(2));
 
     uart_tx_string(&uart0, "Timer0 configured (2 ms period). Enabling IRQ...\r\n");
 
