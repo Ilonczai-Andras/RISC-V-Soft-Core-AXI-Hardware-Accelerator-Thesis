@@ -14,3 +14,27 @@ Nyílt forráskódú RISC-V soft-core processzor (Potato RV32I) integrálása Xi
 - **Fejlesztési napló és eredmények (Sprint Log):** [`docs/Sprint_Naplo.md`](docs/Sprint_Naplo.md)
 - **Fejlesztési és sprint-terv:** [`docs/Fejlesztési_terv.md`](docs/Fejlesztési_terv.md)
 - **Rendszerterv és részletes specifikáció:** [`docs/Rendszerterv_es_Specifikacio.md`](docs/Rendszerterv_es_Specifikacio.md)
+
+---
+
+## Gyorsindítás és Gyakori Parancsok (PowerShell / Windows)
+
+### 1. Bare-metal RISC-V program fordítása ROM indításhoz (Standalone ROM)
+Mivel a processzor közvetlenül a ROM-ból (`0xffff8000`) indul a reset után, a közvetlenül futtatandó programokat a `bootloader.ld` linker szkripttel fordítjuk:
+```powershell
+riscv-none-elf-gcc -c -o vendor/potato/software/hello/main_rom.o -march=rv32i_zicsr -Os -ffreestanding -fno-builtin -Ivendor/potato -Ivendor/potato/libsoc vendor/potato/software/hello/main.c
+riscv-none-elf-gcc -DCOPY_DATA_TO_RAM -c -o vendor/potato/software/hello/start_rom.o -march=rv32i_zicsr -Os -ffreestanding -fno-builtin -Ivendor/potato -Ivendor/potato/libsoc vendor/potato/software/start.S
+riscv-none-elf-gcc -o vendor/potato/software/hello/hello_rom.elf -march=rv32i_zicsr -nostartfiles "-Wl,-m,elf32lriscv" --specs=nosys.specs "-Wl,--no-relax" "-Wl,--gc-sections" "-Wl,-Tvendor/potato/software/bootloader/bootloader.ld" vendor/potato/software/hello/main_rom.o vendor/potato/software/hello/start_rom.o
+riscv-none-elf-objcopy -j .text -j .data -j .rodata -O binary vendor/potato/software/hello/hello_rom.elf vendor/potato/software/hello/hello_rom.bin
+python scripts/bin2hex.py vendor/potato/software/hello/hello_rom.bin vendor/potato/software/hello/hello_rom.hex vendor/potato/software/hello/hello_rom.coe
+```
+
+### 2. Szoftver tiszta újrafordítása (Clean)
+```powershell
+Remove-Item vendor/potato/software/hello/*.o, vendor/potato/software/hello/*.elf, vendor/potato/software/hello/*.bin, vendor/potato/software/hello/*.map, vendor/potato/software/hello/*.coe, vendor/potato/software/hello/*.hex -ErrorAction SilentlyContinue
+```
+
+### 4. Vivado projekt megnyitása
+```powershell
+& "C:\Xilinx\Vivado\2023.2\bin\vivado.bat" .\vivado_project\potato_soc_thesis\potato_soc_thesis.xpr
+```

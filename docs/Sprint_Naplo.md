@@ -6,9 +6,10 @@ Ez a dokumentum a projekt lépésről lépésre történő fejlesztési történ
 ---
 
 ## Tartalomjegyzék
-1. [Sprint 0 – Rendszerterv és Specifikáció](#sprint-0--rendszerterv-és-specifikáció)
-2. [Sprint 1 – Fejlesztői Környezet, Toolchain és Vivado Bring-up](#sprint-1--fejlesztői-környezet-toolchain-és-vivado-bring-up)
-3. [Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver (Következő lépés)](#sprint-2--szimulációs-bring-up-és-bare-metal-szoftver)
+1. [Sprint 0 – Rendszerterv és Specifikáció (✅ Kész)](#sprint-0--rendszerterv-és-specifikáció)
+2. [Sprint 1 – Fejlesztői Környezet, Toolchain és Vivado Bring-up (✅ Kész)](#sprint-1--fejlesztői-környezet-toolchain-és-vivado-bring-up)
+3. [Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver (✅ Kész)](#sprint-2--szimulációs-bring-up-és-bare-metal-szoftver)
+4. [Sprint 3 – Megszakításkezelés és Rendszerstabilitás (⏳ Következő lépés)](#sprint-3--megszakításkezelés-és-rendszerstabilitás-következő-lépés)
 
 ---
 
@@ -99,8 +100,82 @@ Létrehoztuk a projekt gyökerében a [`.gitignore`](../.gitignore) fájlt, amel
 ---
 
 ## Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver
+*Státusz: ✅ KÉSZ ÉS LEZÁRVA*
+
+### 1. Célkitűzés
+Valódi bare-metal C program futtatása a Vivado szimulátorban a Potato RV32I processzoron, a soros porti kimenet automatikus ellenőrzése egy VHDL-be épített virtuális UART snifferrel, valamint az Artix-7 hardveres erőforrás-kihasználtság elemzése offline szintézissel.
+
+### 2. A megoldott legfontosabb probléma: Memóriatérkép eltérés (RAM vs. ROM)
+Az első szimulációs kísérlet során a szimuláció lefutott, de a Tcl konzol üres maradt. A mélyreható hibakeresés a következő okot tárta fel:
+- **Tünet:** A szimuláció lefutása után nem jelent meg karakter a Tcl konzolon.
+- **Ok:** A Potato SoC processzormagjának reset vektora (`RESET_ADDRESS`) a memóriatérkép tetejére, az **`aee_rom`** területére (`0xffff8000`) mutat. Az alapértelmezett `vendor/potato/software/hello/Makefile` viszont a `potato.ld` linker scriptet használta, amely a kódot és a `.rodata` szekciót (benne a `"Hello world\r\n"` konstans szöveggel) a **RAM** `0x00000000` címére linkelte (arra az esetre, ha soros bootloader töltené be).
+- **A processzor viselkedése:** A mag a ROM-ból elindulva belépett a `main()`-be, de a szöveget a RAM `0x000001a4` címéről próbálta beolvasni. Mivel a szimuláció kezdetén a RAM üres (csupa 0), a processzor azonnal lezáró nullát (`\0`) olvasott, a sztringet üresnek hitte, és egyetlen karakter kiküldése nélkül azonnal terminált (`wfi`).
+- **Megoldás:** A `hello` tesztprogramot a `bootloader.ld` linker szkripttel és `-DCOPY_DATA_TO_RAM` kapcsolóval fordítottuk le, így mind az utasítások, mind a sztringkonstans közvetlenül a ROM memóriaterületére (`0xffff8000`) került:
+  ```powershell
+  # main és startup lefordítása a ROM címekre
+  riscv-none-elf-gcc -c -o vendor/potato/software/hello/main_rom.o -march=rv32i_zicsr -Os -ffreestanding -fno-builtin -Ivendor/potato -Ivendor/potato/libsoc vendor/potato/software/hello/main.c
+  riscv-none-elf-gcc -DCOPY_DATA_TO_RAM -c -o vendor/potato/software/hello/start_rom.o -march=rv32i_zicsr -Os -ffreestanding -fno-builtin -Ivendor/potato -Ivendor/potato/libsoc vendor/potato/software/start.S
+  riscv-none-elf-gcc -o vendor/potato/software/hello/hello_rom.elf -march=rv32i_zicsr -nostartfiles "-Wl,-m,elf32lriscv" --specs=nosys.specs "-Wl,--no-relax" "-Wl,--gc-sections" "-Wl,-Tvendor/potato/software/bootloader/bootloader.ld" vendor/potato/software/hello/main_rom.o vendor/potato/software/hello/start_rom.o
+  riscv-none-elf-objcopy -j .text -j .data -j .rodata -O binary vendor/potato/software/hello/hello_rom.elf vendor/potato/software/hello/hello_rom.bin
+  python scripts/bin2hex.py vendor/potato/software/hello/hello_rom.bin vendor/potato/software/hello/hello_rom.hex vendor/potato/software/hello/hello_rom.coe
+  ```
+- **Eredmény:** Létrejött a [`vendor/potato/software/hello/hello_rom.coe`](../vendor/potato/software/hello/hello_rom.coe), amelyben a gépkód és a kiírandó szöveg egyaránt az `aee_rom` belső inicializációs vektorát képezi.
+
+### 3. A Virtuális UART Vevő (Testbench)
+A soros kimenet szimulációs megjelenítéséhez a `tb_toplevel.vhd` testbench-et kibővítettük egy automatikus UART lehallgató folyamattal (`uart_monitor`):
+- **Baud-ráta időzítés:** 50 MHz-es rendszerórajel és 115200 baud mellett az 1 bit átviteli ideje:
+  $$T_{bit} = \frac{1}{115200} \approx 8681\text{ ns}$$
+- **Működése:** A folyamat figyeli az `uart0_txd` vonal lefutó élét (Start bit), a bit közepére ugrik ($4340\text{ ns}$), majd 8 bitidő múlva beolvassa a 8 adatbitet (LSB first).
+- **Konzolra írás:** A vett bájtokból karaktereket képez, és újsor (`LF`) észlelésekor a `std.textio` csomag `writeline()` eljárásával közvetlenül a Vivado Tcl konzolra írja a szövegsort.
+
+### 4. Szimulációs Eredmény (Verifikáció)
+Az `aee_rom` IP frissítése (`hello_rom.coe`) és a szimuláció újraindítása (`relaunch_sim`) után kiadott `run 5 ms` parancsra a Vivado Tcl konzolon sikeresen megjelent a várt üzenet:
+
+```text
+run 5 ms
+Hello world
+run: Time (s): cpu = 00:00:07 ; elapsed = 00:00:35 . Memory (MB): peak = 3683.078 ; gain = 0.000
+```
+
+#### Szimulációs hullámforma és konzol kimenet:
+![Hello World Vivado Szimuláció](images/hello_world.png)
+
+#### A szimulációs hullámforma részletes analízise:
+1. **Órajel és reset:** A `clk` 100 MHz-en indul (10 ns periódus), a `reset_n` alacsony szintről a 4. ciklusban magasba vált, aktiválva az órajelgenerátort és a processzormagot.
+2. **Soros adatcsomagok az `uart0_txd` vonalon:** 
+   - A jel a reset alatt inaktív magas (`'1'`).
+   - A C program indulása után, kb. $50\ \mu\text{s}$-nál megindul a soros átvitel: a hullámformán tisztán kivehető a **13 egymást követő UART bájtkeret** (a `"Hello world\r\n"` 13 karaktere).
+   - Mindegyik keret egy aktív alacsony (`'0'`) Start bittel kezdődik, amit a 8 adatbit, majd az aktív magas (`'1'`) Stop bit követ.
+3. **Átviteli idő:** A sárga kurzor a hullámforma végénél pontosan $1\,131.75\ \mu\text{s}$-nál ($1.13\text{ ms}$) áll, ami pontosan egyezik az elméleti számítással:
+   $$13\text{ karakter} \times 10\text{ bit} \times 8.68\ \mu\text{s/bit} \approx 1.13\text{ ms}$$
+4. **Hardveres igazolás:**
+   - A Potato RV32I processzormag hardveres resetje tiszta, az utasításbeolvasás az `aee_rom`-ból azonnal megindul.
+   - A C kód inicializációja lefut, beállítja az 50 MHz-es órajelhez tartozó UART osztót (értéke: 26).
+   - A processzor a Wishbone buszon keresztül sikeresen írja a soros adó FIFO regiszterét.
+   - A virtuális UART vevő pontosan és torzításmentesen rekonstruálja a soros adatfolyamot, és a Tcl konzolra írja a szöveget.
+
+---
+
+### 5. Szintézis Eredmények és Erőforrás-kihasználtság (Artix-7 XC7A35T)
+A szintézis hiba és kritikus figyelmeztetés nélkül lefutott (`0 Errors`, `0 Critical Warnings`). A Vivado Utilization Report alapján az alábbi hardveres erőforrás-kihasználtságot kaptuk:
+
+| Erőforrás típus | Felhasznált | Elérhető (XC7A35T) | Kihasználtság (%) | Értékelés a diplomamunkához |
+| :--- | :---: | :---: | :---: | :--- |
+| **Slice LUT** (Kombinációs logika) | **3 238** | 20 800 | **15.57 %** | Bőséges szabad kapacitás (~84%) az AXI buszokhoz és vezérléshez |
+| **Slice Register / FF** (Flip-Flop) | **1 985** | 41 600 | **4.77 %** | Kiváló tartalék (~95%) a futószalag regiszterekhez |
+| **Latch** (Nem szinkron tároló) | **0** | 41 600 | **0.00 %** | **Tiszta szinkron dizájn**, nincsenek nem szándékolt latchek |
+| **Block RAM (RAMB36E1)** | **36** | 50 | **72.00 %** | A Potato alapértelmezett 128 KB RAM-ja; a gyorsító FIFO-ihoz marad 14 csempe |
+| **DSP48E1 Szelet** (Hardveres szorzó) | **0** | 90 | **0.00 %** | **Mind a 90 DSP szabadon áll** a tervezendő fixpontos gyorsítónak! |
+
+### 6. Összegzés és Mérföldkő Eredmény
+1. A Potato RV32I soft-core processzor és SoC környezete stabilan és helyesen szimulálható Windows környezetben.
+2. A virtuális UART sniffer révén kényelmes, automatikus tesztelési felületünk van a bare-metal C kódokhoz.
+3. A szintézis megerősítette, hogy az FPGA bőséges erőforrásokkal várja az AXI alrendszer és a hardveres gyorsító megvalósítását.
+
+---
+
+## Sprint 3 – Megszakításkezelés és Rendszerstabilitás (Következő lépés)
 *Státusz: ⏳ KÖVETKEZŐ LÉPÉS*
-- [ ] A lefordított `hello` program `.coe` formátumba alakítása és betöltése a ROM-ba (`aee_rom`).
-- [ ] Virtuális UART monitor megírása a `tb_toplevel.vhd` testbench-be (karakterek kiírása a Vivado konzolra).
-- [ ] Szimulációs futtatás és „Hello world” ellenőrzése a Tcl konzolon.
-- [ ] Első szintézis teszt (Run Synthesis) Artix-7-re az erőforrások (LUT, FF, BRAM) ellenőrzésére.
+
+### Célkitűzés
+A processzor megszakításvezérlőjének (Interrupt Controller) és az időzítőnek (Timer IRQ) a tesztelése bare-metal C környezetből, felkészítve a rendszert a hardveres gyorsító befejezés-megszakításának (Done IRQ) fogadására.

@@ -4,6 +4,8 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+use std.textio.all;
 
 entity tb_toplevel is
 end entity tb_toplevel;
@@ -52,5 +54,38 @@ begin
 
 		wait;
 	end process stimulus;
+    
+    uart_monitor: process
+            constant bit_period : time := 8681 ns; -- 115200 baud bitideje
+            variable rx_byte    : std_logic_vector(7 downto 0);
+            variable rx_char    : character;
+            variable log_line   : line;
+        begin
+            -- 1. Várakozás a Start bitre (lefutó él)
+            wait until falling_edge(uart0_txd);
 
+            -- 2. Beugrás a Start bit közepére
+            wait for bit_period / 2;
+
+            -- 3. A 8 adatbit mintavételezése (LSB first)
+            for i in 0 to 7 loop
+                wait for bit_period;
+                rx_byte(i) := uart0_txd;
+            end loop;
+
+            -- 4. Várakozás a Stop bitre
+            wait for bit_period;
+
+            -- 5. Karakter átalakítása és kiírása
+            rx_char := character'val(to_integer(unsigned(rx_byte)));
+
+            -- Ha újsor (LF = ASCII 10), kiírjuk az egész sort a Vivado Tcl konzolra
+            if rx_char = LF then
+                writeline(output, log_line);
+            elsif rx_char /= CR then -- A kocsi-vissza (CR = ASCII 13) karaktert kihagyjuk
+                write(log_line, rx_char);
+            end if;
+
+        end process uart_monitor;
+    
 end architecture testbench;
