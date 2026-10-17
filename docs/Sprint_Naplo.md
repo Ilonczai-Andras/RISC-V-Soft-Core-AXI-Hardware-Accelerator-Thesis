@@ -10,7 +10,8 @@ Ez a dokumentum a projekt lépésről lépésre történő fejlesztési történ
 2. [Sprint 1 – Fejlesztői Környezet, Toolchain és Vivado Bring-up (✅ Kész)](#sprint-1--fejlesztői-környezet-toolchain-és-vivado-bring-up)
 3. [Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver (✅ Kész)](#sprint-2--szimulációs-bring-up-és-bare-metal-szoftver)
 4. [Sprint 3 – Megszakításkezelés és Rendszerstabilitás (✅ Kész)](#sprint-3--megszakításkezelés-és-rendszerstabilitás)
-5. [Sprint 4 – Wishbone ↔ AXI4-Lite Híd (⏳ Következő lépés)](#sprint-4--wishbone--axi4-lite-híd-specifikáció-és-tervezés-következő-lépés)
+5. [Sprint 4 – AXI4-Lite Slave Vezérlő- és Státuszregiszter Modul (✅ Kész)](#sprint-4--axi4-lite-slave-vezérlő--és-státuszregiszter-modul)
+6. [Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció (⏳ Következő lépés)](#sprint-5--wishbone--axi4-lite-híd-és-soc-integráció-következő-lépés)
 
 ---
 
@@ -181,16 +182,16 @@ A szintézis hiba és kritikus figyelmeztetés nélkül lefutott (`0 Errors`, `0
 ### 1. Célkitűzés
 A RISC-V Machine-mode (M-mode) hardveres megszakításkezelésének és trap logikájának megvalósítása és verifikálása a Potato soft-core processzoron, felkészítve a rendszert a későbbi AXI hardveres gyorsító befejezés-megszakításának (IRQ 5 - Accelerator Done) stabil fogadására.
 
-### 2. A tesztprogram felépítése (`vendor/potato/software/timer_test/`)
-Egy dedikált, a `hello` alkalmazástól független mérőszoftvert hoztunk létre:
+### 2. A tesztprogram felépítése (`software/timer_test/`)
+Egy dedikált, a `vendor/potato` submodule-tól független, saját felső szintű `software/timer_test/` könyvtárban lévő mérőszoftvert hoztunk létre:
 - **`main.c`:**
   - UART0 inicializálása (115200 baud @ 50 MHz).
-  - Timer0 felkonfigurálása 2.0 ms-os periódusra (100 000 órajelciklus @ 50 MHz, $100\,000 \times 20\text{ ns} = 2\text{ ms}$).
+  - Timer0 felkonfigurálása 2.0 ms-os periódusra (`TIMER_MS_TO_TICKS(2)` = 100 000 órajelciklus @ 50 MHz, $100\,000 \times 20\text{ ns} = 2\text{ ms}$).
   - Megszakítások engedélyezése: platform IRQ 0 engedélyezése a `mie` CSR regiszter 24. bitjén (`potato_enable_irq(0)`), majd globális engedélyezés az `mstatus` regiszter MIE bitjén (`potato_enable_interrupts()`).
   - Főciklus: energiatakarékos alvás `wfi` (Wait For Interrupt) utasítással a megszakítások érkezéséig.
 - **`exception_handler()` (Trap Handler C rutin):**
   - A `cause` regiszter vizsgálata: ellenőrzi a legfelső bitet (Interrupt jelző) és az IRQ forrást (`PLATFORM_IRQ_TIMER0`).
-  - **Hardveres nyugtázás (ACK):** A számláló nullázása és újraindítása (`timer_start(&timer0)`), amely azonnal '0'-ba ejti vissza a hardveres `irq` vonalat.
+  - **Hardveres nyugtázás (ACK):** A számláló nullázása és újraindítása (`timer_clear(&timer0)`), amely azonnal `'0'`-ba ejti vissza a hardveres `irq` vonalat.
   - Sorszámozott diagnosztikai üzenet küldése a soros konzolra (`[IRQ 0] Timer tick: X`).
 - **`Makefile`:** A szoftver közvetlenül a ROM memóriaterületére (`0xffff8000`) linkelve készül (`bootloader.ld`).
 
@@ -226,7 +227,7 @@ run: Time (s): cpu = 00:00:13 ; elapsed = 00:01:48 . Memory (MB): peak = 2578.77
    - Az `uart0_txd` vonalon sűrű, folyamatos adatcsomagok láthatók, amíg a processzor a 92 karakteres nyitó szöveget kiküldi a soros vonalra.
 2. **$8.0\text{ ms} \rightarrow 10.0\text{ ms}$ (Első csendes szakasz - Várakozás az IRQ-ra):** 
    - A szöveg lefutása után a processzor elindítja a Timer0-t és `wfi` (Wait For Interrupt) utasítással alvó állapotba kerül.
-   - Az `uart0_txd` vonal inaktív magas ('1') szintre áll be pontosan **2.0 ms időtartamra**, miközben a számláló a háttérben növekszik.
+   - Az `uart0_txd` vonal inaktív magas (`'1'`) szintre áll be pontosan **2.0 ms időtartamra**, miközben a számláló a háttérben növekszik.
 3. **$10.0\text{ ms}$ (1. Megszakítás - Tick 1):** 
    - A Timer eléri a 100 000 ciklust, a processzor belép a trap handlerbe, törli az időzítőt és kiküldi az `[IRQ 0] Timer tick: 1` üzenetet (jól látható, diszkrét UART adatcsomag).
 4. **$12.0\text{ ms}$ és $14.0\text{ ms}$ (2. és 3. Megszakítás - Tick 2 és 3):** 
@@ -240,8 +241,58 @@ A **Sprint 3 100%-ban sikeresen lezárult**:
 
 ---
 
-## Sprint 4 – Wishbone ↔ AXI4-Lite Híd Specifikáció és Tervezés (Következő lépés)
+## Sprint 4 – AXI4-Lite Slave Vezérlő- és Státuszregiszter Modul
+*Státusz: ✅ KÉSZ ÉS LEZÁRVA*
+
+### 1. Célkitűzés
+Belépés a **Fázis 2-be (AXI Buszinterfész tervezése)**: a saját tervezésű hardveres mappa-struktúra (`rtl/axi/`, `rtl/accelerator/`, `tb/`) kialakítása, valamint a mátrixszorzó gyorsító **ARM AMBA AXI4-Lite Slave vezérlő- és státuszregiszter bankjának** ([`rtl/axi/axi4_lite_slave_ctrl.vhd`](../rtl/axi/axi4_lite_slave_ctrl.vhd)) megtervezése és önálló, önellenőrző testbench-ben ([`tb/tb_axi4_lite_slave_ctrl.vhd`](../tb/tb_axi4_lite_slave_ctrl.vhd)) történő verifikálása.
+
+### 2. Megvalósított architektúra és Regisztertérkép (`rtl/axi/axi4_lite_slave_ctrl.vhd`)
+A modul teljes mértékben implementálja az AMBA AXI4-Lite protokoll 5 független csatornáját (`AR`, `R`, `AW`, `W`, `B`) `VALID`/`READY` kézfogással és `OKAY ("00")` válaszjelzéssel. A regiszterek címdekódolása a bájtcím `addr(3 downto 2)` bitjei alapján történik:
+
+| Offset | `addr(3:2)` | Regiszter neve | Típus | Alapérték (Reset) | Funkció és Bitek |
+| :---: | :---: | :--- | :---: | :---: | :--- |
+| **`0x00`** | `"00"` | **`ACCEL_CR`** (`reg_cr`) | R/W | `0x0000_0000` | **Bit 0 (`START`):** Auto-clear (1 órajeles indítóimpulzus az `accel_start_out` lábon)<br>**Bit 1 (`RESET`):** Szoftveres gyorsító-reset (`accel_reset_out`)<br>**Bit 2 (`IE`):** Megszakítás-engedélyezés (Interrupt Enable) |
+| **`0x04`** | `"01"` | **`ACCEL_SR`** (`reg_sr`) | R | `0x0000_0000` | **Bit 0 (`BUSY`):** `accel_busy_in`<br>**Bit 1 (`DONE`):** Tárolt (`sticky`) `done_flag`, amely `accel_done_in = '1'`-re bebillen, és új `START`/`RESET` hatására törlődik<br>**Bit 2 (`ERR_OVF`):** `accel_err_ovf_in` |
+| **`0x08`** | `"10"` | **`ACCEL_DIM`** (`reg_dim`) | R/W | `0x0000_0004` | **Bit [7:0]:** Mátrixdimenzió ($N \in \{4, 8, 16\}$), kivezetve az `accel_dim_out` portra |
+| **`0x0C`** | `"11"` | **`ACCEL_CYCLES`** (`reg_cycles`) | R | `0x0000_0000` | **Bit [31:0]:** A legutóbbi mátrixszorzás hardveres órajelciklus-száma (`accel_cycles_in`) |
+
+A modul megszakításkimenete (`irq_out`) kombinációsan `irq_out <= done_flag and reg_cr(2)` formában áll elő, amely közvetlenül a Potato SoC `irq(5)` bemenetére lesz köthető.
+
+### 3. Önellenőrző Testbench és Szimulációs Eredmények (`tb/tb_axi4_lite_slave_ctrl.vhd`)
+A testbench `axi_write` és `axi_read` eljárásokkal, valamint `assert` ellenőrzésekkel 5 egymást követő tesztesetben vizsgálta a modult 50 MHz-es (`20 ns`) órajel mellett:
+
+```text
+Note: 1. TESZT OK: Reset utani alapertelmezett ACCEL_DIM = 4.
+Time: 210 ns  Iteration: 1  Process: /tb_axi4_lite_slave_ctrl/stim_proc
+Note: 2. TESZT OK: ACCEL_DIM iras es visszaolvasas (N=8) sikeres.
+Time: 370 ns  Iteration: 1  Process: /tb_axi4_lite_slave_ctrl/stim_proc
+Note: 3. TESZT OK: START impulzus (1 orajel auto-clear) es IE bit mukodese helyes.
+Time: 510 ns  Iteration: 1  Process: /tb_axi4_lite_slave_ctrl/stim_proc
+Note: 4. TESZT OK: ACCEL_SR (BUSY/DONE), ACCEL_CYCLES es irq_out mukodese helyes.
+Time: 790 ns  Iteration: 1  Process: /tb_axi4_lite_slave_ctrl/stim_proc
+Note: 5. TESZT OK: Uj START hatasara a DONE flag es az IRQ torlodott.
+Time: 891 ns  Iteration: 0  Process: /tb_axi4_lite_slave_ctrl/stim_proc
+Note: =========================================================
+Note: MINDEN AXI4-LITE SLAVE TESZT SIKERESEN LEFUTOTT (PASS)!
+Note: =========================================================
+```
+
+#### Szimulációs hullámforma (`0 ns – 900 ns`):
+![AXI4-Lite Slave Vezérlőregiszter Vivado Szimuláció](images/axi4_lite_slave_ctrl.png)
+
+#### A hullámforma részletes analízise:
+1. **`0 ns – 210 ns` (Reset és 1. Teszt):** Az aktív-alacsony `s_axi_aresetn` felengedése után az első AXI olvasás (`s_axi_araddr = 0x08`) során az `arvalid`/`arready` és `rvalid`/`rready` kézfogás lezajlik, az `s_axi_rdata` buszon megjelenik az alapértelmezett `0x00000004`.
+2. **`210 ns – 370 ns` (2. Teszt – `ACCEL_DIM` írás és visszaolvasás):** Az `s_axi_awaddr = 0x08` és `s_axi_wdata = 0x00000008` írási tranzakciót a Slave `awready = 1`, `wready = 1`, majd `bvalid = 1` (`bresp = 00`) jelekkel nyugtázza. Az `accel_dim_out` kimenet azonnal `0x04`-ről `0x08`-ra vált, amit a rákövetkező olvasás is visszaigazol.
+3. **`370 ns – 510 ns` (3. Teszt – `START` auto-clear impulzus és `IE` bit):** A `0x00` címre írt `0x00000005` hatására az `accel_start_out` pontosan 1 órajelciklusra (`20 ns`) `'1'`-be ugrik (`410 ns – 430 ns`), majd automatikusan `'0'`-ra törlődik, miközben a `reg_cr` regiszterben az `IE` bit (`0x00000004`) megmarad.
+4. **`510 ns – 790 ns` (4. Teszt – `BUSY`, `DONE`, `CYCLES` és `IRQ`):** Az `accel_busy_in` magas szintje alatt a `reg_sr` értéke `0x00000001`, majd az `accel_done_in` impulzus hatására a `reg_sr` `0x00000002`-re vált és az `irq_out` megszakításkimenet tartósan `'1'`-be áll. A `0x0C` cím olvasása visszaadja a `0x000001A4` (420 ciklus) értéket.
+5. **`790 ns – 891 ns` (5. Teszt – Új `START` és `IRQ` törlés):** Az újabb `START` írás (`0x00000005`) hatására az `accel_start_out` ismét kiad egy 1 órajeles impulzust, a `done_flag` és az `irq_out` pedig azonnal `'0'`-ba törlődik.
+
+---
+
+## Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció (Következő lépés)
 *Státusz: ⏳ KÖVETKEZŐ LÉPÉS*
 
 ### Célkitűzés
-Belépés a **Fázis 2-be (AXI Buszinterfész tervezése)**: a processzor natív Wishbone buszát az ARM AMBA AXI4-Lite slave modulokkal összekötő protokoll-konverter (Wishbone Master $\rightarrow$ AXI4-Lite Master híd) VHDL tervezése és önálló testbench szimulációja.
+A Potato processzor natív Wishbone B4 buszát az elkészült `axi4_lite_slave_ctrl` modullal összekötő protokoll-konverter ([`rtl/axi/wb_to_axi4_lite_bridge.vhd`](../rtl/axi/wb_to_axi4_lite_bridge.vhd)) VHDL megvalósítása, bekötése a `toplevel.vhd` `0xC000_6000` memóriatartományába (`irq(5)` megszakítással), és teljes SoC szintű C tesztprogrammal történő verifikálása.
+

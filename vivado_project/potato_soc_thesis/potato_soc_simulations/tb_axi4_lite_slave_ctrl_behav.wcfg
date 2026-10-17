@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wave_config>
+   <wave_state>
+   </wave_state>
+   <db_ref_list>
+      <db_ref path="tb_axi4_lite_slave_ctrl_behav.wdb" id="1">
+         <top_modules>
+            <top_module name="glbl" />
+            <top_module name="tb_axi4_lite_slave_ctrl" />
+         </top_modules>
+      </db_ref>
+   </db_ref_list>
+   <zoom_setting>
+      <ZoomStartTime time="0.000 ns"></ZoomStartTime>
+      <ZoomEndTime time="900.000 ns"></ZoomEndTime>
+      <Cursor1Time time="900.000 ns"></Cursor1Time>
+   </zoom_setting>
+   <column_width_setting>
+      <NameColumnWidth column_width="276"></NameColumnWidth>
+      <ValueColumnWidth column_width="116"></ValueColumnWidth>
+   </column_width_setting>
+   <WVObjectSize size="38" />
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_aclk" type="logic">
+      <obj_property name="ElementShortName">s_axi_aclk</obj_property>
+      <obj_property name="ObjectShortName">s_axi_aclk</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_aresetn" type="logic">
+      <obj_property name="ElementShortName">s_axi_aresetn</obj_property>
+      <obj_property name="ObjectShortName">s_axi_aresetn</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_araddr" type="array">
+      <obj_property name="ElementShortName">s_axi_araddr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_araddr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_arvalid" type="logic">
+      <obj_property name="ElementShortName">s_axi_arvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axi_arvalid</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_arready" type="logic">
+      <obj_property name="ElementShortName">s_axi_arready</obj_property>
+      <obj_property name="ObjectShortName">s_axi_arready</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_rdata" type="array">
+      <obj_property name="ElementShortName">s_axi_rdata[31:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_rdata[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_rresp" type="array">
+      <obj_property name="ElementShortName">s_axi_rresp[1:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_rresp[1:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_rvalid" type="logic">
+      <obj_property name="ElementShortName">s_axi_rvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axi_rvalid</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_rready" type="logic">
+      <obj_property name="ElementShortName">s_axi_rready</obj_property>
+      <obj_property name="ObjectShortName">s_axi_rready</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_awaddr" type="array">
+      <obj_property name="ElementShortName">s_axi_awaddr[7:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_awaddr[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_awvalid" type="logic">
+      <obj_property name="ElementShortName">s_axi_awvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axi_awvalid</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_awready" type="logic">
+      <obj_property name="ElementShortName">s_axi_awready</obj_property>
+      <obj_property name="ObjectShortName">s_axi_awready</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_wdata" type="array">
+      <obj_property name="ElementShortName">s_axi_wdata[31:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_wdata[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_wstrb" type="array">
+      <obj_property name="ElementShortName">s_axi_wstrb[3:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_wstrb[3:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_wvalid" type="logic">
+      <obj_property name="ElementShortName">s_axi_wvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axi_wvalid</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_wready" type="logic">
+      <obj_property name="ElementShortName">s_axi_wready</obj_property>
+      <obj_property name="ObjectShortName">s_axi_wready</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_bresp" type="array">
+      <obj_property name="ElementShortName">s_axi_bresp[1:0]</obj_property>
+      <obj_property name="ObjectShortName">s_axi_bresp[1:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_bvalid" type="logic">
+      <obj_property name="ElementShortName">s_axi_bvalid</obj_property>
+      <obj_property name="ObjectShortName">s_axi_bvalid</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/s_axi_bready" type="logic">
+      <obj_property name="ElementShortName">s_axi_bready</obj_property>
+      <obj_property name="ObjectShortName">s_axi_bready</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_start_out" type="logic">
+      <obj_property name="ElementShortName">accel_start_out</obj_property>
+      <obj_property name="ObjectShortName">accel_start_out</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_reset_out" type="logic">
+      <obj_property name="ElementShortName">accel_reset_out</obj_property>
+      <obj_property name="ObjectShortName">accel_reset_out</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_dim_out" type="array">
+      <obj_property name="ElementShortName">accel_dim_out[7:0]</obj_property>
+      <obj_property name="ObjectShortName">accel_dim_out[7:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_busy_in" type="logic">
+      <obj_property name="ElementShortName">accel_busy_in</obj_property>
+      <obj_property name="ObjectShortName">accel_busy_in</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_done_in" type="logic">
+      <obj_property name="ElementShortName">accel_done_in</obj_property>
+      <obj_property name="ObjectShortName">accel_done_in</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_err_ovf_in" type="logic">
+      <obj_property name="ElementShortName">accel_err_ovf_in</obj_property>
+      <obj_property name="ObjectShortName">accel_err_ovf_in</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/accel_cycles_in" type="array">
+      <obj_property name="ElementShortName">accel_cycles_in[31:0]</obj_property>
+      <obj_property name="ObjectShortName">accel_cycles_in[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/irq_out" type="logic">
+      <obj_property name="ElementShortName">irq_out</obj_property>
+      <obj_property name="ObjectShortName">irq_out</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/reg_cr" type="array">
+      <obj_property name="ElementShortName">reg_cr[31:0]</obj_property>
+      <obj_property name="ObjectShortName">reg_cr[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/reg_sr" type="array">
+      <obj_property name="ElementShortName">reg_sr[31:0]</obj_property>
+      <obj_property name="ObjectShortName">reg_sr[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/reg_dim" type="array">
+      <obj_property name="ElementShortName">reg_dim[31:0]</obj_property>
+      <obj_property name="ObjectShortName">reg_dim[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/reg_cycles" type="array">
+      <obj_property name="ElementShortName">reg_cycles[31:0]</obj_property>
+      <obj_property name="ObjectShortName">reg_cycles[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/awready_reg" type="logic">
+      <obj_property name="ElementShortName">awready_reg</obj_property>
+      <obj_property name="ObjectShortName">awready_reg</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/wready_reg" type="logic">
+      <obj_property name="ElementShortName">wready_reg</obj_property>
+      <obj_property name="ObjectShortName">wready_reg</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/bvalid_reg" type="logic">
+      <obj_property name="ElementShortName">bvalid_reg</obj_property>
+      <obj_property name="ObjectShortName">bvalid_reg</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/arready_reg" type="logic">
+      <obj_property name="ElementShortName">arready_reg</obj_property>
+      <obj_property name="ObjectShortName">arready_reg</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/rvalid_reg" type="logic">
+      <obj_property name="ElementShortName">rvalid_reg</obj_property>
+      <obj_property name="ObjectShortName">rvalid_reg</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/rdata_reg" type="array">
+      <obj_property name="ElementShortName">rdata_reg[31:0]</obj_property>
+      <obj_property name="ObjectShortName">rdata_reg[31:0]</obj_property>
+   </wvobject>
+   <wvobject fp_name="/tb_axi4_lite_slave_ctrl/dut/done_flag" type="logic">
+      <obj_property name="ElementShortName">done_flag</obj_property>
+      <obj_property name="ObjectShortName">done_flag</obj_property>
+   </wvobject>
+</wave_config>
