@@ -11,7 +11,7 @@ Ez a dokumentum a projekt lépésről lépésre történő fejlesztési történ
 3. [Sprint 2 – Szimulációs Bring-up és Bare-metal Szoftver (✅ Kész)](#sprint-2--szimulációs-bring-up-és-bare-metal-szoftver)
 4. [Sprint 3 – Megszakításkezelés és Rendszerstabilitás (✅ Kész)](#sprint-3--megszakításkezelés-és-rendszerstabilitás)
 5. [Sprint 4 – AXI4-Lite Slave Vezérlő- és Státuszregiszter Modul (✅ Kész)](#sprint-4--axi4-lite-slave-vezérlő--és-státuszregiszter-modul)
-6. [Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció (⏳ Következő lépés)](#sprint-5--wishbone--axi4-lite-híd-és-soc-integráció-következő-lépés)
+6. [Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció (🔄 Folyamatban)](#sprint-5--wishbone--axi4-lite-híd-és-soc-integráció)
 
 ---
 
@@ -290,9 +290,59 @@ Note: =========================================================
 
 ---
 
-## Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció (Következő lépés)
-*Státusz: ⏳ KÖVETKEZŐ LÉPÉS*
+## Sprint 5 – Wishbone ↔ AXI4-Lite Híd és SoC Integráció
+*Időszak: 2026. november · Státusz: 🔄 FOLYAMATBAN (1. feladat megvalósítva)*
 
-### Célkitűzés
-A Potato processzor natív Wishbone B4 buszát az elkészült `axi4_lite_slave_ctrl` modullal összekötő protokoll-konverter ([`rtl/axi/wb_to_axi4_lite_bridge.vhd`](../rtl/axi/wb_to_axi4_lite_bridge.vhd)) VHDL megvalósítása, bekötése a `toplevel.vhd` `0xC000_6000` memóriatartományába (`irq(5)` megszakítással), és teljes SoC szintű C tesztprogrammal történő verifikálása.
+### 1. Célkitűzés
+A Potato RV32I processzor natív Wishbone B4 (Classic) buszát az elkészült `axi4_lite_slave_ctrl` gyorsító regisztertárral összekötő protokoll-konverter híd ([`rtl/axi/wb_to_axi4_lite_bridge.vhd`](../rtl/axi/wb_to_axi4_lite_bridge.vhd)) VHDL megvalósítása, önellenőrző testbench-csel történő verifikálása, bekötése a `toplevel.vhd` `0xC000_6000` memóriatartományába (`irq(5)` megszakítással), és teljes SoC szintű bare-metal C tesztprogrammal történő validálása.
+
+---
+
+### 2. Elméleti és Technikai Háttér: Buszprotokollok és Konverzió
+
+A rendszerben két alapvetően eltérő buszfilozófia találkozik:
+1. **Wishbone B4 (Classic):** A Potato CPU nyílt forráskódú, egyszerűsített busza. Cím és adat egyszerre jelenik meg, és a tranzakciót egyetlen közös kézfogás (`CYC` + `STB` $\rightarrow$ `ACK`) vezérli.
+2. **ARM AMBA AXI4-Lite:** Ipari szabványú, robusztus SoC interfész, amely **5 független pont-pont csatornán** (`AW`, `W`, `B`, `AR`, `R`) valósít meg aszinkron és szétválasztott kézfogást (`VALID` / `READY`).
+
+| Protokoll tulajdonság | Wishbone B4 (Classic) | ARM AMBA AXI4-Lite |
+| :--- | :--- | :--- |
+| **Csatornák száma** | 1 közös tranzakciós adatút | **5 független csatorna** (`AW`, `W`, `B`, `AR`, `R`) |
+| **Kézfogás (Handshake)** | `CYC` + `STB` $\rightarrow$ `ACK` | Külön **`VALID` / `READY`** minden csatornán |
+| **Írási folyamat** | Cím (`adr`) és adat (`dat_w`) egyszerre érvényes | Cím (`AW`) és adat (`W`) külön utakon halad; válaszcsatorna (`B`) nyugtáz |
+| **Olvasási folyamat** | Címadás, várakozás a `dat_r` és `ACK` jelekre | Címadás (`AR` csatorna), adatfogadás (`R` csatorna) |
+| **Bájt-engedélyezés** | `SEL[3:0]` | `WSTRB[3:0]` (1:1 megfeleltetés) |
+| **Hozzáférési védelem** | Nem specifikált / opcionális tag bitek | **`AWPROT[2:0]`** és **`ARPROT[2:0]`** védelmi bitek |
+
+---
+
+### 3. AXI Hozzáférés-Védelem: `AWPROT` és `ARPROT` Specifikáció
+
+Az AXI4 szabvány szerint a címcsatornákon a címmel együtt egy 3 bites védelmi vektor utazik:
+- **Bit 0 (Privileged / Normal):** `'0'` = Normál felhasználói hozzáférés, `'1'` = Privilegizált (kernel/supervisor) hozzáférés.
+- **Bit 1 (Secure / Non-secure):** `'0'` = Biztonságos hozzáférés (TrustZone Secure), `'1'` = Nem biztonságos hozzáférés.
+- **Bit 2 (Instruction / Data):** `'0'` = Adathozzáférés (Load/Store), `'1'` = Utasítás-letöltés (Instruction Fetch).
+
+A megvalósított hídban mind az `m_axi_awprot`, mind az `m_axi_arprot` fixen **`"000"`** szintre van kötve: a gyorsító regisztereit a CPU kizárólag adatként (Data = `0`) éri el, normál és biztonságos módban, teljes szabványkompatibilitást biztosítva lebegő bemenetek nélkül.
+
+---
+
+### 4. A Híd Állapotgépe (FSM Architektúra – `wb_to_axi4_lite_bridge.vhd`)
+
+A híd állapottartó FSM-je gondoskodik az aszinkron csatornák szinkronizálásáról:
+1. **`ST_IDLE`:** Várakozás a processzor felől érkező `wb_cyc_in = '1'` és `wb_stb_in = '1'` kérésre. Ha írás (`wb_we_in = '1'`), átvált `ST_WRITE_DATA`-ba; ha olvasás, `ST_READ_ADDR`-ba.
+2. **`ST_WRITE_DATA`:** Párhuzamosan indítja az AXI `AW` és `W` csatornákat (`awvalid = '1'`, `wvalid = '1'`). Két belső regiszterrel (`aw_done_reg`, `w_done_reg`) kezeli, ha a cím és adat kézfogás nem ugyanabban az órajelben zárul le. Mindkét kézfogás lezajlásakor átlép a válasz állapotba.
+3. **`ST_WRITE_RESP`:** Figyeli az AXI Slave `bvalid` válaszát (`bready = '1'`). Érkezéskor kiadja a Wishbone nyugtát (`wb_ack_reg = '1'`) és átlép `ST_ACK`-ba.
+4. **`ST_READ_ADDR`:** Kiadja az `arvalid = '1'` olvasási címet, és várja az `arready` kézfogást.
+5. **`ST_READ_DATA`:** Várja az `rvalid` adatot (`rready = '1'`). Az érkező adatot a `wb_rdata_reg`-be másolja, kiadja a `wb_ack_reg = '1'` jelet és átlép `ST_ACK`-ba.
+6. **`ST_ACK`:** Pontosan 1 órajelciklusig érvényesíti a `wb_ack_out` jelet a Wishbone B4 specifikáció szerint, majd visszatér `ST_IDLE`-be.
+
+---
+
+### 5. A Sprint 5 Lépései és Hátralévő Feladatai
+- [x] **1. lépés:** Elméleti háttér kidolgozása, protokoll-összehasonlítás, `wb_to_axi4_lite_bridge.vhd` FSM megtervezése és entitás/architektúra váz létrehozása.
+- [ ] **2. lépés:** A híd belső FSM átmeneteinek véglegesítése és önellenőrző szimulációs testbench (`tb/tb_wb_to_axi4_lite_bridge.vhd`) megírása.
+- [ ] **3. lépés:** Integrálás a felső szintű SoC-ba (`toplevel.vhd`): a híd és az `axi4_lite_slave_ctrl` bekötése a `0xC000_6000` címre, `irq(5)` csatlakoztatása.
+- [ ] **4. lépés:** Bare-metal C regiszterteszt írása (`software/axi_ctrl_test/`) és szimulációs futtatása virtuális UART konzolon.
+- [ ] **5. lépés:** Szintézis és időzítés-ellenőrzés (Timing Closure) Vivadóban.
+
 
