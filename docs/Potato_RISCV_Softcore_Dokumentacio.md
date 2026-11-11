@@ -342,6 +342,11 @@ A `pp_potato` toplevel kivezetései a szabványos Wishbone B4 protokoll szerint 
 - `wb_we_out`: Írás (`'1'`) vagy olvasás (`'0'`).
 - `wb_ack_in`: Slave által adott átviteli nyugtázás.
 
+> [!NOTE]
+> **Wishbone B4 Időzítés és Formális Verifikációs Referencia:**  
+> A Wishbone busz viselkedési és időzítési modelljének (egyidejű cím/adat érvényesség `CYC` és `STB` esetén, stabilitási garancia a nyugtáig, és az 1 órajeles `ACK` impulzus) részletes formális leírása Dan Gisselquist (ZipCPU) szakmai cikkén alapul:  
+> *Dan Gisselquist: Formally Proving Wishbone (2017)* – [https://zipcpu.com/zipcpu/2017/11/07/wb-formal.html](https://zipcpu.com/zipcpu/2017/11/07/wb-formal.html)
+
 ---
 
 ## 8. SoC Szintű Integráció (Top-Level felépítés)

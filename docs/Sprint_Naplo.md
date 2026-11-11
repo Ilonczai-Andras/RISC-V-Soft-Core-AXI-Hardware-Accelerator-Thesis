@@ -313,6 +313,13 @@ A rendszerben két alapvetően eltérő buszfilozófia találkozik:
 | **Bájt-engedélyezés** | `SEL[3:0]` | `WSTRB[3:0]` (1:1 megfeleltetés) |
 | **Hozzáférési védelem** | Nem specifikált / opcionális tag bitek | **`AWPROT[2:0]`** és **`ARPROT[2:0]`** védelmi bitek |
 
+#### Formális Buszinvariánsok és Szakirodalmi Referencia (Wishbone Timing)
+A Wishbone protokoll szigorú időzítési és stabilitási szabályait Dan Gisselquist (ZipCPU) formális verifikációs referenciája alapján vettük figyelembe:
+* **Hivatalos forrás:** Dan Gisselquist (ZipCPU): *Formally Proving Wishbone*, 2017. URL: [https://zipcpu.com/zipcpu/2017/11/07/wb-formal.html](https://zipcpu.com/zipcpu/2017/11/07/wb-formal.html)
+* **1. Invariáns (Egyidejű érvényesség - Setup):** Amikor a Wishbone Master (Potato CPU) magasba állítja a `wb_cyc_in` és `wb_stb_in` jeleket, a cím (`wb_adr_in`), az adat (`wb_dat_in`), a bájtmaszk (`wb_sel_in`) és az írásengedélyezés (`wb_we_in`) kötelezően már ugyanabban az órajelben stabil és érvényes a buszon. Ez teszi lehetővé, hogy a híd külön mintavételi állapot nélkül, kombinációsan kösse rá a Wishbone bemeneteket az AXI buszra (`m_axi_awaddr <= wb_adr_in`, `m_axi_wdata <= wb_dat_in`, stb.).
+* **2. Invariáns (Stabilitási garancia - Hold):** Amíg a Slave nem ad nyugtát (`wb_ack_out = '1'`), a Master nem módosíthatja a címet és az adatot.
+* **3. Invariáns (Nyugtázási impulzusszélesség):** A Classic Wishbone specifikáció szerint az `ACK` jel pontosan 1 órajelciklusig lehet aktív tranzakciónként (`ST_ACK` állapot), elkerülve a duplázott nyugtázást.
+
 ---
 
 ### 3. AXI Hozzáférés-Védelem: `AWPROT` és `ARPROT` Specifikáció
@@ -326,21 +333,26 @@ A megvalósított hídban mind az `m_axi_awprot`, mind az `m_axi_arprot` fixen *
 
 ---
 
-### 4. A Híd Állapotgépe (FSM Architektúra – `wb_to_axi4_lite_bridge.vhd`)
+### 4. A Híd Véglegesített Állapotgépe (FSM Architektúra – `wb_to_axi4_lite_bridge.vhd`)
 
-A híd állapottartó FSM-je gondoskodik az aszinkron csatornák szinkronizálásáról:
-1. **`ST_IDLE`:** Várakozás a processzor felől érkező `wb_cyc_in = '1'` és `wb_stb_in = '1'` kérésre. Ha írás (`wb_we_in = '1'`), átvált `ST_WRITE_DATA`-ba; ha olvasás, `ST_READ_ADDR`-ba.
-2. **`ST_WRITE_DATA`:** Párhuzamosan indítja az AXI `AW` és `W` csatornákat (`awvalid = '1'`, `wvalid = '1'`). Két belső regiszterrel (`aw_done_reg`, `w_done_reg`) kezeli, ha a cím és adat kézfogás nem ugyanabban az órajelben zárul le. Mindkét kézfogás lezajlásakor átlép a válasz állapotba.
-3. **`ST_WRITE_RESP`:** Figyeli az AXI Slave `bvalid` válaszát (`bready = '1'`). Érkezéskor kiadja a Wishbone nyugtát (`wb_ack_reg = '1'`) és átlép `ST_ACK`-ba.
-4. **`ST_READ_ADDR`:** Kiadja az `arvalid = '1'` olvasási címet, és várja az `arready` kézfogást.
-5. **`ST_READ_DATA`:** Várja az `rvalid` adatot (`rready = '1'`). Az érkező adatot a `wb_rdata_reg`-be másolja, kiadja a `wb_ack_reg = '1'` jelet és átlép `ST_ACK`-ba.
-6. **`ST_ACK`:** Pontosan 1 órajelciklusig érvényesíti a `wb_ack_out` jelet a Wishbone B4 specifikáció szerint, majd visszatér `ST_IDLE`-be.
+A híd állapottartó FSM-je az alábbi megerősített és verifikált logikával működik:
+1. **`ST_IDLE`:** Várakozás a processzor felől érkező `wb_cyc_in = '1'` és `wb_stb_in = '1'` kérésre. 
+   - A korábbi tranzakciókból maradt állapotok kivédésére itt történik az `aw_done_reg <= '0'` és `w_done_reg <= '0'` flag-ek biztonsági törlése.
+   - Ha írás (`wb_we_in = '1'`), aktiválja az `axi_awvalid_reg <= '1'` és `axi_wvalid_reg <= '1'` jeleket, és átvált `ST_WRITE_DATA`-ba.
+   - Ha olvasás (`wb_we_in = '0'`), aktiválja az `axi_arvalid_reg <= '1'` jelet, és átvált `ST_READ_ADDR`-ba.
+2. **`ST_WRITE_DATA`:** Párhuzamosan kezeli az AXI `AW` és `W` csatornákat. Két belső regiszterrel (`aw_done_reg`, `w_done_reg`) egymástól függetlenül regisztrálja a cím- és adatkézfogások lezárulását. Amikor mindkét csatorna sikeresen átment, aktiválja az `axi_bready_reg <= '1'` jelet és átlép `ST_WRITE_RESP`-be.
+3. **`ST_WRITE_RESP`:** Figyeli az AXI Slave `m_axi_bvalid` válaszát. Érkezésekor lezárja a csatornát (`axi_bready_reg <= '0'`), kiadja a Wishbone nyugtát (`wb_ack_reg <= '1'`) és átlép `ST_ACK`-ba.
+4. **`ST_READ_ADDR`:** Várakozik az `m_axi_arready = '1'` jelre. A cím elfogadásakor lezárja az `axi_arvalid_reg <= '0'`-t, aktiválja az adatfogadó `axi_rready_reg <= '1'` jelet és átvált `ST_READ_DATA`-ba.
+5. **`ST_READ_DATA`:** Várja az `m_axi_rvalid = '1'` adatérvényesség jelet. Beérkezéskor elmenti az adatot a Wishbone kimenetre (`wb_rdata_reg <= m_axi_rdata`), lezárja az `axi_rready_reg <= '0'` jelet, érvényesíti a `wb_ack_reg <= '1'`-et és átlép `ST_ACK`-ba.
+6. **`ST_ACK`:** Pontosan 1 órajelciklusig érvényesíti a `wb_ack_out` jelet, garantálva a tiszta Wishbone B4 ciklusbefejezést, majd visszatér `ST_IDLE`-be.
+7. **Reset Konvenció:** A Potato SoC toplevel belső periféria-resetjéhez igazodva **aktív magas szinkron reset** (`if reset = '1' then`) vezérli a regiszterek alaphelyzetbe állítását.
 
 ---
 
 ### 5. A Sprint 5 Lépései és Hátralévő Feladatai
 - [x] **1. lépés:** Elméleti háttér kidolgozása, protokoll-összehasonlítás, `wb_to_axi4_lite_bridge.vhd` FSM megtervezése és entitás/architektúra váz létrehozása.
-- [ ] **2. lépés:** A híd belső FSM átmeneteinek véglegesítése és önellenőrző szimulációs testbench (`tb/tb_wb_to_axi4_lite_bridge.vhd`) megírása.
+- [x] **2. lépés (FSM):** A híd belső FSM állapotátmeneteinek véglegesítése (írás/olvasás kézfogások, done-flag védelem, aktív magas reset, 1-ciklusos ACK).
+- [ ] **2. lépés (Testbench):** Önellenőrző szimulációs testbench (`tb/tb_wb_to_axi4_lite_bridge.vhd`) megírása és lefuttatása.
 - [ ] **3. lépés:** Integrálás a felső szintű SoC-ba (`toplevel.vhd`): a híd és az `axi4_lite_slave_ctrl` bekötése a `0xC000_6000` címre, `irq(5)` csatlakoztatása.
 - [ ] **4. lépés:** Bare-metal C regiszterteszt írása (`software/axi_ctrl_test/`) és szimulációs futtatása virtuális UART konzolon.
 - [ ] **5. lépés:** Szintézis és időzítés-ellenőrzés (Timing Closure) Vivadóban.

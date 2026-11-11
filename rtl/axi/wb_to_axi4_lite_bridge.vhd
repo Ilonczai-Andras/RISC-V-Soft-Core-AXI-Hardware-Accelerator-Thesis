@@ -88,26 +88,26 @@ architecture rtl of wb_to_axi4_lite_bridge is
 begin
 
     -- Wishbone outputs
-    wb_ack_o <= wb_ack_reg;
-    wb_dat_o <= wb_rdata_reg;
+    wb_ack_out <= wb_ack_reg;
+    wb_dat_out <= wb_rdata_reg;
 
     -- AXI Outputs
 
     -- AW
-    m_axi_awaddr  <= wb_adr_i;
+    m_axi_awaddr  <= wb_adr_in;
     m_axi_awprot  <= "000";
     m_axi_awvalid <= axi_awvalid_reg;
 
     -- W
-    m_axi_wdata   <= wb_dat_i;
-    m_axi_wstrb   <= wb_sel_i;
+    m_axi_wdata   <= wb_dat_in;
+    m_axi_wstrb   <= wb_sel_in;
     m_axi_wvalid  <= axi_wvalid_reg;
 
     -- B
     m_axi_bready  <= axi_bready_reg;
 
     -- AR
-    m_axi_araddr  <= wb_adr_i;
+    m_axi_araddr  <= wb_adr_in;
     m_axi_arprot  <= "000";
     m_axi_arvalid <= axi_arvalid_reg;
 
@@ -117,7 +117,7 @@ begin
         fsm_proc : process(clk)
         begin
             if rising_edge(clk) then
-                if reset = '0' then
+                if reset = '1' then
                     state           <= ST_IDLE;
                     aw_done_reg     <= '0';
                     w_done_reg      <= '0';
@@ -131,6 +131,78 @@ begin
                 else
                     wb_ack_reg <= '0';
     
+                    case state is
+                        when ST_IDLE =>                                                                                                                                                                                                                                                  
+                            aw_done_reg <= '0';                                                                                                                                                                                                                                          
+                            w_done_reg  <= '0';                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                                        
+                            if (wb_cyc_in = '1' and wb_stb_in = '1') then                                                                                                                                                                                                                
+                                if (wb_we_in = '1') then -- Write Transaction                                                                                                                                                                                                            
+                                    axi_awvalid_reg <= '1';                                                                                                                                                                                                                              
+                                    axi_wvalid_reg  <= '1';                                                                                                                                                                                                                              
+                                    aw_done_reg     <= '0';                                                                                                                                                                                                                              
+                                    w_done_reg      <= '0';                                                                                                                                                                                                                              
+                                    state           <= ST_WRITE_DATA;                                                                                                                                                                                                                    
+                                else                     -- Read Transaction                                                                                                                                                                                                             
+                                    axi_arvalid_reg <= '1';                                                                                                                                                                                                                              
+                                    state           <= ST_READ_ADDR;                                                                                                                                                                                                                     
+                                end if;                                                                                                                                                                                                                                                  
+                            else                                                                                                                                                                                                                                                         
+                                state <= ST_IDLE;                                                                                                                                                                                                                                        
+                            end if;
+
+                        when ST_WRITE_DATA =>
+                            -- AW
+                            if ( axi_awvalid_reg = '1' and m_axi_awready = '1') then
+                                axi_awvalid_reg <= '0';
+                                aw_done_reg <= '1';
+                            end if ;
+                            
+                            -- W
+                            if ( axi_wvalid_reg = '1' and m_axi_wready = '1') then
+                                axi_wvalid_reg <= '0';
+                                w_done_reg <= '1';
+                            end if ;
+
+                            if ((aw_done_reg = '1' or (axi_awvalid_reg = '1' and m_axi_awready = '1')) and                                 
+                                (w_done_reg  = '1' or (axi_wvalid_reg  = '1' and m_axi_wready  = '1'))) then                               
+                                                                                                                                        
+                                axi_bready_reg <= '1';                                                                                     
+                                state          <= ST_WRITE_RESP;                                                                           
+                            end if;
+
+                        when ST_WRITE_RESP =>    
+
+                            if m_axi_bvalid = '1' then                                                                                                                                                                                                                                   
+                                axi_bready_reg <= '0';                                                                                                                                                                  
+                                wb_ack_reg     <= '1';                                                                                                                                                               
+                                state          <= ST_ACK;                                                                                                                                                                                                                                
+                            else                                                                                                                                                                                                                                                         
+                                state <= ST_WRITE_RESP;
+                            end if;
+
+                        when ST_READ_ADDR =>
+                            if ( axi_arvalid_reg = '1' and m_axi_arready = '1' ) then
+                                axi_arvalid_reg <= '0';
+                                axi_rready_reg <= '1';
+                                state <= ST_READ_DATA;
+                            end if ;
+                            
+                        when ST_READ_DATA =>                                                                                                                                                                                                                                             
+                            if m_axi_rvalid = '1' then                                                                                                                                                                                                                                   
+                                wb_rdata_reg   <= m_axi_rdata;                                                                                                                                                                                
+                                axi_rready_reg <= '0';                                                                                                                                                                                                   
+                                wb_ack_reg     <= '1';                                                                                                                                                                          
+                                state          <= ST_ACK;                                                                                                                                                                                                                                
+                            else                                                                                                                                                                                                                                                         
+                                state <= ST_READ_DATA;  -- Várakozás az adatra                                                                                                                                                                                                           
+                            end if;
+
+                        when ST_ACK =>
+                            wb_ack_reg <= '0';                                                                                                                                                                                                                                           
+                            state <= ST_IDLE;
+
+                    end case;
 
                 end if;
             end if;
