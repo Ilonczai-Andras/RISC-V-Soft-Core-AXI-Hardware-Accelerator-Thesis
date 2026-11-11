@@ -1,0 +1,3 @@
+[submodule "vendor/potato"]                                                                                
+path = vendor/potato
+url = https://github.com/skordal/potato.git
