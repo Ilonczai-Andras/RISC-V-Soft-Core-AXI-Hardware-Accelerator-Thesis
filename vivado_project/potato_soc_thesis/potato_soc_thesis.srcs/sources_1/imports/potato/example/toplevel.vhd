@@ -52,12 +52,14 @@ architecture behaviour of toplevel is
 	constant IRQ_UART0_INDEX     : natural := 2;
 	constant IRQ_UART1_INDEX     : natural := 3;
 	constant IRQ_BUS_ERROR_INDEX : natural := 4;
+	constant IRQ_ACCEL_DONE_INDEX: natural := 5;
 
 	-- Interrupt signals:
 	signal irq_array : std_logic_vector(7 downto 0);
 	signal timer0_irq, timer1_irq : std_logic;
 	signal uart0_irq, uart1_irq   : std_logic;
 	signal intercon_irq_bus_error : std_logic;
+	signal accel_irq              : std_logic;
 
 	-- Processor signals:
 	signal processor_adr_out : std_logic_vector(31 downto 0);
@@ -151,6 +153,48 @@ architecture behaviour of toplevel is
 	signal aee_ram_we_in   : std_logic;
 	signal aee_ram_ack_out : std_logic;
 
+	-- Accelerator Control & Bus signals:
+	signal accel_ctrl_dat_out : std_logic_vector(31 downto 0);
+	signal accel_ctrl_ack_out : std_logic;
+	signal accel_ctrl_cyc_in  : std_logic;
+	signal accel_ctrl_stb_in  : std_logic;
+
+	-- AXI4-Lite bus signals (Bridge -> Accel Ctrl Slave):
+	signal accel_axi_awaddr  : std_logic_vector(31 downto 0);
+	signal accel_axi_awprot  : std_logic_vector(2 downto 0);
+	signal accel_axi_awvalid : std_logic;
+	signal accel_axi_awready : std_logic;
+
+	signal accel_axi_wdata   : std_logic_vector(31 downto 0);
+	signal accel_axi_wstrb   : std_logic_vector(3 downto 0);
+	signal accel_axi_wvalid  : std_logic;
+	signal accel_axi_wready  : std_logic;
+
+	signal accel_axi_bresp   : std_logic_vector(1 downto 0);
+	signal accel_axi_bvalid  : std_logic;
+	signal accel_axi_bready  : std_logic;
+
+	signal accel_axi_araddr  : std_logic_vector(31 downto 0);
+	signal accel_axi_arprot  : std_logic_vector(2 downto 0);
+	signal accel_axi_arvalid : std_logic;
+	signal accel_axi_arready : std_logic;
+
+	signal accel_axi_rdata   : std_logic_vector(31 downto 0);
+	signal accel_axi_rresp   : std_logic_vector(1 downto 0);
+	signal accel_axi_rvalid  : std_logic;
+	signal accel_axi_rready  : std_logic;
+
+	-- Accelerator dedicated control signals (internal signals until MAC core is integrated):
+	signal accel_start       : std_logic;
+	signal accel_reset_hw    : std_logic;
+	signal accel_dim         : std_logic_vector(7 downto 0);
+	signal accel_busy        : std_logic := '0';
+	signal accel_done        : std_logic := '0';
+	signal accel_err_ovf     : std_logic := '0';
+	signal accel_cycles      : std_logic_vector(31 downto 0) := (others => '0');
+
+	signal system_aresetn    : std_logic;
+
 	-- Main memory signals:
 	signal main_memory_adr_in  : std_logic_vector(16 downto 0);
 	signal main_memory_dat_in  : std_logic_vector(31 downto 0);
@@ -166,7 +210,7 @@ architecture behaviour of toplevel is
 		PERIPHERAL_TIMER0, PERIPHERAL_TIMER1,
 		PERIPHERAL_UART0, PERIPHERAL_UART1, PERIPHERAL_GPIO,
 		PERIPHERAL_AEE_ROM, PERIPHERAL_AEE_RAM, PERIPHERAL_INTERCON,
-		PERIPHERAL_MAIN_MEMORY, PERIPHERAL_ERROR, PERIPHERAL_NONE);
+		PERIPHERAL_MAIN_MEMORY, PERIPHERAL_ACCEL_CTRL, PERIPHERAL_ERROR, PERIPHERAL_NONE);
 	signal intercon_peripheral : intercon_peripheral_type := PERIPHERAL_NONE;
 
 	-- Interconnect address decoder state:
@@ -180,6 +224,7 @@ begin
 			IRQ_UART0_INDEX => uart0_irq,
 			IRQ_UART1_INDEX => uart1_irq,
 			IRQ_BUS_ERROR_INDEX => intercon_irq_bus_error,
+			IRQ_ACCEL_DONE_INDEX => accel_irq,
 			others => '0'
 		);
 
@@ -211,6 +256,8 @@ begin
 									intercon_peripheral <= PERIPHERAL_GPIO;
 								when x"5" =>
 									intercon_peripheral <= PERIPHERAL_INTERCON;
+								when x"6" =>
+                                    intercon_peripheral <= PERIPHERAL_ACCEL_CTRL; -- 0xC000_6000 base
 								when others => -- Invalid address - delegated to the error peripheral
 									intercon_peripheral <= PERIPHERAL_ERROR;
 							end case;
@@ -242,7 +289,7 @@ begin
 		gpio_ack_out, gpio_dat_out,
 		intercon_ack_out, intercon_dat_out, error_ack_out,
 		aee_rom_ack_out, aee_rom_dat_out, aee_ram_ack_out, aee_ram_dat_out,
-		main_memory_ack_out, main_memory_dat_out)
+		main_memory_ack_out, main_memory_dat_out, accel_ctrl_ack_out, accel_ctrl_dat_out)
 	begin
 		case intercon_peripheral is
 			when PERIPHERAL_TIMER0 =>
@@ -275,6 +322,9 @@ begin
 			when PERIPHERAL_MAIN_MEMORY =>
 				processor_ack_in <= main_memory_ack_out;
 				processor_dat_in <= main_memory_dat_out;
+			when PERIPHERAL_ACCEL_CTRL =>
+                    processor_ack_in <= accel_ctrl_ack_out;
+                    processor_dat_in <= accel_ctrl_dat_out;
 			when PERIPHERAL_NONE =>
 				processor_ack_in <= '0';
 				processor_dat_in <= (others => '0');
@@ -515,5 +565,93 @@ begin
 	main_memory_sel_in <= processor_sel_out;
 	main_memory_cyc_in <= processor_cyc_out when intercon_peripheral = PERIPHERAL_MAIN_MEMORY else '0';
 	main_memory_stb_in <= processor_stb_out when intercon_peripheral = PERIPHERAL_MAIN_MEMORY else '0';
+
+	-- =========================================================================
+	-- Hardware Accelerator Subsystem: Wishbone -> AXI4-Lite Bridge and Slave
+	-- =========================================================================
+	system_aresetn <= not reset;
+
+	accel_ctrl_cyc_in <= processor_cyc_out when intercon_peripheral = PERIPHERAL_ACCEL_CTRL else '0';
+	accel_ctrl_stb_in <= processor_stb_out when intercon_peripheral = PERIPHERAL_ACCEL_CTRL else '0';
+
+	wb_to_axi_bridge: entity work.wb_to_axi4_lite_bridge
+		generic map(
+			ADDR_WIDTH => 32,
+			DATA_WIDTH => 32
+		)
+		port map(
+			clk        => system_clk,
+			reset      => reset,
+
+			wb_adr_in  => processor_adr_out,
+			wb_sel_in  => processor_sel_out,
+			wb_cyc_in  => accel_ctrl_cyc_in,
+			wb_stb_in  => accel_ctrl_stb_in,
+			wb_we_in   => processor_we_out,
+			wb_dat_in  => processor_dat_out,
+			wb_dat_out => accel_ctrl_dat_out,
+			wb_ack_out => accel_ctrl_ack_out,
+
+			m_axi_awaddr  => accel_axi_awaddr,
+			m_axi_awprot  => accel_axi_awprot,
+			m_axi_awvalid => accel_axi_awvalid,
+			m_axi_awready => accel_axi_awready,
+
+			m_axi_wdata   => accel_axi_wdata,
+			m_axi_wstrb   => accel_axi_wstrb,
+			m_axi_wvalid  => accel_axi_wvalid,
+			m_axi_wready  => accel_axi_wready,
+
+			m_axi_bresp   => accel_axi_bresp,
+			m_axi_bvalid  => accel_axi_bvalid,
+			m_axi_bready  => accel_axi_bready,
+
+			m_axi_araddr  => accel_axi_araddr,
+			m_axi_arprot  => accel_axi_arprot,
+			m_axi_arvalid => accel_axi_arvalid,
+			m_axi_arready => accel_axi_arready,
+
+			m_axi_rdata   => accel_axi_rdata,
+			m_axi_rresp   => accel_axi_rresp,
+			m_axi_rvalid  => accel_axi_rvalid,
+			m_axi_rready  => accel_axi_rready
+		);
+	
+	accel_ctrl_slave: entity work.axi4_lite_slave_ctrl
+		port map(
+			s_axi_aclk       => system_clk,
+			s_axi_aresetn    => system_aresetn,
+
+			s_axi_araddr     => accel_axi_araddr(7 downto 0),
+			s_axi_arvalid    => accel_axi_arvalid,
+			s_axi_arready    => accel_axi_arready,
+
+			s_axi_rdata      => accel_axi_rdata,
+			s_axi_rresp      => accel_axi_rresp,
+			s_axi_rvalid     => accel_axi_rvalid,
+			s_axi_rready     => accel_axi_rready,
+
+			s_axi_awaddr     => accel_axi_awaddr(7 downto 0),
+			s_axi_awvalid    => accel_axi_awvalid,
+			s_axi_awready    => accel_axi_awready,
+
+			s_axi_wdata      => accel_axi_wdata,
+			s_axi_wstrb      => accel_axi_wstrb,
+			s_axi_wvalid     => accel_axi_wvalid,
+			s_axi_wready     => accel_axi_wready,
+
+			s_axi_bresp      => accel_axi_bresp,
+			s_axi_bvalid     => accel_axi_bvalid,
+			s_axi_bready     => accel_axi_bready,
+
+			accel_start_out  => accel_start,
+			accel_reset_out  => accel_reset_hw,
+			accel_dim_out    => accel_dim,
+			accel_busy_in    => accel_busy,
+			accel_done_in    => accel_done,
+			accel_err_ovf_in => accel_err_ovf,
+			accel_cycles_in  => accel_cycles,
+			irq_out          => accel_irq
+		);
 
 end architecture behaviour;

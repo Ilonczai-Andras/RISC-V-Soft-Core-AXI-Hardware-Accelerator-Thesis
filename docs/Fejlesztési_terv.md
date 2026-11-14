@@ -89,26 +89,27 @@ Mivel a fejlesztés túlnyomó része otthon, fizikai FPGA hardver nélkül zajl
 
 ---
 
-### Fázis 2 – AXI infrastruktúra tervezése VHDL-ben
+### Fázis 2 – AXI infrastruktúra tervezése VHDL-ben (🔄 FOLYAMATBAN)
 
-#### Sprint 4 (2 hét): Saját AXI4-Lite Slave komponens
+#### Sprint 4 (2 hét): Saját AXI4-Lite Slave komponens (✅ KÉSZ)
 * Generikus VHDL AXI4-Lite slave modul megírása:
-  * Cím-dekódolás és állapotgép az AW/W/B (írás) és AR/R (olvasás) csatornákhoz.
-  * Belső regisztertár: Control (Start/Reset/IRQ-enable), Status (Busy/Done/Error), Mátrix méret-regiszterek.
-* Önellenőrző (self-checking) testbench írása: véletlenszerű és határesetes tranzakciók, backpressure (késleltetett READY jelek) kezelése.
-* **Mérföldkő:** AXI4-Lite slave izolált szimulációban 100%-os protokoll-helyességgel működik.
+  * Cím-dekódolás és állapotgép az AW/W/B (írás) és AR/R (olvasás) csatornákhoz (`rtl/axi/axi4_lite_slave_ctrl.vhd`).
+  * Belső regisztertár: Control (Start/Reset/IRQ-enable), Status (Busy/Done/Error), Mátrix méret-regiszterek (`ACCEL_DIM`), cikluskövető (`ACCEL_CYCLES`).
+* Önellenőrző (self-checking) testbench írása: véletlenszerű és határesetes tranzakciók, backpressure (késleltetett READY jelek) kezelése (`tb/tb_axi4_lite_slave_ctrl.vhd`).
+* **Mérföldkő:** AXI4-Lite slave modul izolált szimulációban 5/5 tesztesetre 100%-os protokoll-helyességgel verifikálva (PASS).
 
-#### Sprint 5 (2 hét): Wishbone ↔ AXI4-Lite híd és szimulációs integráció
-* Wishbone Master → AXI4-Lite Master konverter VHDL modul tervezése és testbench verifikációja.
-* A híd és az AXI4-Lite slave beillesztése a SoC memóriatérképébe.
-* C tesztprogram szimulációja: a szimulált RISC-V mag C utasításokkal írja és olvassa a dummy AXI regisztereket.
-* Időzítési ellenőrzés (Timing Check) Vivadóban.
-* **Mérföldkő:** A virtuális C program sikeresen konfigurálja a buszhídon keresztül az AXI regisztereket szimulációban.
+#### Sprint 5 (2 hét): Wishbone ↔ AXI4-Lite híd és szimulációs integráció (✅ KÉSZ)
+* Wishbone Master → AXI4-Lite Master konverter VHDL modul tervezése és FSM állapotgép megvalósítása (`rtl/axi/wb_to_axi4_lite_bridge.vhd`).
+* Önellenőrző testbench készítése és lezárása (`tb/tb_wb_to_axi4_lite_bridge.vhd`, 5/5 PASS).
+* A híd és az AXI4-Lite slave beillesztése a SoC memóriatérképébe (`toplevel.vhd`, `0xC000_6000`, `IRQ 5`).
+* Bare-metal C tesztprogram fordítása és szimulációja (`software/axi_ctrl_test/main.c`): a szimulált RISC-V mag C utasításokkal sikeresen írja és olvassa a regisztereket, START auto-clear és státusz igazolva a virtuális UART-on (4/4 PASS).
+* Hardveres szintézis és időzítés-ellenőrzés (Timing Check) Vivadóban Artix-7-re (`0 Errors, 0 Critical Warnings, 0 Latches`, 16.11% LUT).
+* **Mérföldkő:** A virtuális C program sikeresen konfigurálja és ellenőrzi a buszhídon keresztül az AXI regisztereket szimulációban; a top-level SoC szintetizálva.
 
-#### Sprint 6 (3 hét): AXI4-Stream interfészek tervezése
-* VHDL AXI4-Stream Slave (bemenet) és Master (kimenet) modulok implementálása (TVALID, TREADY, TDATA, TLAST).
+#### Sprint 6 (3 hét): AXI4-Stream interfészek tervezése (⏳ KÖVETKEZŐ LÉPÉS)
+* VHDL AXI4-Stream Slave (bemenet) és Master (kimenet) modulok implementálása (TVALID, TREADY, TDATA, TLAST) a `rtl/axi/wb_to_axis_fifo.vhd` fájlban a `0xC000_7000` báziscímen.
 * Belső szinkron FIFO pufferek beillesztése a sebességkülönbségek és backpressure kivédésére.
-* Interfész összekapcsolás a rendszerrel (AXI-Stream FIFO vagy minimális DMA vezérlő).
+* Interfész összekapcsolás a rendszerrel (Wishbone-ba képezett streaming FIFO portok).
 * Loopback tesztbench szimuláció: streaming adatátvitel ellenőrzése terhelés és stall állapotok mellett.
 * **Mérföldkő:** Az AXI-Stream adatút önálló szimulációban adatvesztés nélkül, maximális throughputtal közvetíti az adatokat.
 
