@@ -1,44 +1,34 @@
-# ==========================================
-# Vivado - Autogenerált nagy méretű könyvtárak
-# ==========================================
-*.cache/
-*.hw/
-*.ip_user_files/
-*.runs/
-*.sim/
-.Xil/
-hd_visual/
+# Vivado - Auto-generated large directories
+vivado_project/*/.Xil/
+vivado_project/*/*.cache/
+vivado_project/*/*.hw/
+vivado_project/*/*.ip_user_files/
+vivado_project/*/*.runs/
+vivado_project/*/*.sim/
+vivado_project/*/*.gen/
 
-# Vivado naplófájlok és naplózás
+# Vivado log and journal files
 *.log
 *.jou
-*.str
-*.backup.log
-*.backup.jou
+vivado_*.str
+vivado_*.zip
+hs_err_pid*.dmp
 
-# Vivado generált binárisok és checkpointok
-*.bit
+# Vivado generated binary artifacts and checkpoints
 *.dcp
-*.ltx
-*.pb
-*.rpt
-*.vds
-*.wdb
+*.bit
+*.bin
 
-# ==========================================
-# RISC-V Szoftver fordítási melléktermékek
-# ==========================================
-*.o
-*.elf
-*.map
-sw/**/build/
+# RISC-V software build artifacts
+software/*/*.o
+software/*/*.elf
+software/*/*.bin
+software/*/*.hex
+software/*/*.coe
+software/*/*.map
 
-# ==========================================
-# Python & Rendszerfájlok
-# ==========================================
+# Python & System files
 __pycache__/
 *.py[cod]
-.vscode/
-.idea/
+.DS_Store
 Thumbs.db
-Desktop.ini

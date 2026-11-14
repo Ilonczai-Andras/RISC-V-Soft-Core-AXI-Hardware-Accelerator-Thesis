@@ -195,7 +195,7 @@ begin
                                 wb_ack_reg     <= '1';                                                                                                                                                                          
                                 state          <= ST_ACK;                                                                                                                                                                                                                                
                             else                                                                                                                                                                                                                                                         
-                                state <= ST_READ_DATA;  -- Várakozás az adatra                                                                                                                                                                                                           
+                                state <= ST_READ_DATA;  -- Wait for read data                                                                                                                                                                                                           
                             end if;
 
                         when ST_ACK =>

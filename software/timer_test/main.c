@@ -49,7 +49,7 @@ int main(void)
 
     potato_enable_interrupts();
 
-    // 4. Timer0 elindítása:
+    // 4. Start Timer0:
     timer_start(&timer0);
 
     while (1) {

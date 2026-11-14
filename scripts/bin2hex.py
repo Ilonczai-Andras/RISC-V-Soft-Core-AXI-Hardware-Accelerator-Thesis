@@ -9,22 +9,22 @@ def bin_to_hex(bin_filename, hex_filename, coe_filename=None):
     with open(bin_filename, "rb") as f:
         data = f.read()
 
-    # 4 bájtra kerekítés (32 bites szavak)
+    # Pad to 4-byte boundary (32-bit words)
     pad = (4 - (len(data) % 4)) % 4
     data += b"\x00" * pad
 
     words = []
     for i in range(0, len(data), 4):
-        # Little-endian 32-bit integer beolvasása
+        # Unpack little-endian 32-bit unsigned integer
         val = struct.unpack("<I", data[i:i+4])[0]
         words.append(val)
 
-    # VHDL testbench számára megfelelő .hex formátum (szavanként egy sor, hexadecimálisan)
+    # Format suitable for VHDL testbench (one 32-bit hex word per line)
     with open(hex_filename, "w") as f:
         for w in words:
             f.write(f"{w:08x}\n")
 
-    # Xilinx BRAM init számára megfelelő .coe formátum
+    # Format suitable for Xilinx Block RAM initialization (.coe)
     if coe_filename:
         with open(coe_filename, "w") as f:
             f.write("memory_initialization_radix=16;\n")
@@ -33,13 +33,13 @@ def bin_to_hex(bin_filename, hex_filename, coe_filename=None):
                 sep = ";" if i == len(words) - 1 else ","
                 f.write(f"{w:08x}{sep}\n")
 
-    print(f"[OK] {len(words)} sz (32-bit) kirva: {hex_filename}")
+    print(f"[OK] {len(words)} words (32-bit) written: {hex_filename}")
     if coe_filename:
-        print(f"[OK] COE fjl legenerlva: {coe_filename}")
+        print(f"[OK] COE file generated: {coe_filename}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Hasznlat: python bin2hex.py <input.bin> <output.hex> [output.coe]")
+        print("Usage: python bin2hex.py <input.bin> <output.hex> [output.coe]")
         sys.exit(1)
     coe = sys.argv[3] if len(sys.argv) > 3 else None
     bin_to_hex(sys.argv[1], sys.argv[2], coe)

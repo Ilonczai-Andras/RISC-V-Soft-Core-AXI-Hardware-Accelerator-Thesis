@@ -1,4 +1,4 @@
- library ieee;
+library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
@@ -7,9 +7,9 @@ end entity tb_axi4_lite_slave_ctrl;
 
 architecture sim of tb_axi4_lite_slave_ctrl is
 
-    constant CLK_PERIOD : time := 20 ns; -- 50 MHz órajel
+    constant CLK_PERIOD : time := 20 ns; -- 50 MHz clock
 
-    -- Globális jelek
+    -- Global signals
     signal s_axi_aclk    : std_logic := '0';
     signal s_axi_aresetn : std_logic := '0';
 
@@ -40,7 +40,7 @@ architecture sim of tb_axi4_lite_slave_ctrl is
     signal s_axi_bvalid  : std_logic;
     signal s_axi_bready  : std_logic := '0';
 
-    -- Gyorsító oldal jelei
+    -- Hardware Accelerator Core Signals
     signal accel_start_out  : std_logic;
     signal accel_reset_out  : std_logic;
     signal accel_dim_out    : std_logic_vector(7 downto 0);
@@ -55,7 +55,7 @@ architecture sim of tb_axi4_lite_slave_ctrl is
 
 begin
 
-    -- Órajel generálás (50 MHz)
+    -- Clock Generation (50 MHz)
     clk_proc : process
     begin
         while not sim_done loop
@@ -67,7 +67,7 @@ begin
         wait;
     end process;
 
-    -- Tesztelendő modul (DUT) példányosítása
+    -- Device Under Test (DUT) Instantiation
     dut : entity work.axi4_lite_slave_ctrl
         port map (
             s_axi_aclk       => s_axi_aclk,
@@ -99,10 +99,10 @@ begin
             irq_out          => irq_out
         );
 
-    -- Stimulus és önellenőrző folyamat
+    -- Stimulus and Self-Checking Process
     stim_proc : process
 
-        -- Segédeljárás AXI4-Lite íráshoz
+        -- Helper procedure for AXI4-Lite write transactions
         procedure axi_write(
             constant addr : in std_logic_vector(7 downto 0);
             constant data : in std_logic_vector(31 downto 0)
@@ -116,23 +116,23 @@ begin
             s_axi_wvalid  <= '1';
             s_axi_bready  <= '1';
 
-            -- Várakozás az AW és W kézfogásra
+            -- Wait for AW and W handshakes
             wait until rising_edge(s_axi_aclk) and s_axi_awready = '1' and s_axi_wready = '1';
             s_axi_awvalid <= '0';
             s_axi_wvalid  <= '0';
 
-            -- Várakozás a BVALID válaszra
+            -- Wait for BVALID response
             if s_axi_bvalid = '0' then
                 wait until rising_edge(s_axi_aclk) and s_axi_bvalid = '1';
             end if;
             assert s_axi_bresp = "00"
-                report "HIBA: AXI Write BRESP nem OKAY (00)!" severity failure;
+                report "ERROR: AXI Write BRESP is not OKAY (00)!" severity failure;
 
             wait until rising_edge(s_axi_aclk);
             s_axi_bready <= '0';
         end procedure;
 
-        -- Segédeljárás AXI4-Lite olvasáshoz
+        -- Helper procedure for AXI4-Lite read transactions
         procedure axi_read(
             constant addr : in  std_logic_vector(7 downto 0);
             signal   data : out std_logic_vector(31 downto 0)
@@ -143,24 +143,26 @@ begin
             s_axi_arvalid <= '1';
             s_axi_rready  <= '1';
 
-            -- Várakozás az ARREADY kézfogásra
+            -- Wait for ARREADY handshake
             wait until rising_edge(s_axi_aclk) and s_axi_arready = '1';
             s_axi_arvalid <= '0';
 
-            -- Várakozás az RVALID adatra
+            -- Wait for RVALID data
             if s_axi_rvalid = '0' then
                 wait until rising_edge(s_axi_aclk) and s_axi_rvalid = '1';
             end if;
             data <= s_axi_rdata;
             assert s_axi_rresp = "00"
-                report "HIBA: AXI Read RRESP nem OKAY (00)!" severity failure;
+                report "ERROR: AXI Read RRESP is not OKAY (00)!" severity failure;
 
             wait until rising_edge(s_axi_aclk);
             s_axi_rready <= '0';
         end procedure;
 
     begin
-        -- 1. TESZT: Reset állapot ellenőrzése
+        -- ---------------------------------------------------------------------
+        -- TEST 1: Check Reset State
+        -- ---------------------------------------------------------------------
         s_axi_aresetn <= '0';
         wait for CLK_PERIOD * 5;
         wait until rising_edge(s_axi_aclk);
@@ -169,21 +171,25 @@ begin
 
         axi_read(x"08", read_data);
         assert read_data = x"00000004"
-            report "1. TESZT HIBA: ACCEL_DIM reset erteke nem 4!" severity failure;
+            report "TEST 1 ERROR: ACCEL_DIM reset value is not 4!" severity failure;
         assert accel_dim_out = x"04"
-            report "1. TESZT HIBA: accel_dim_out nem 0x04!" severity failure;
-        report "1. TESZT OK: Reset utani alapertelmezett ACCEL_DIM = 4." severity note;
+            report "TEST 1 ERROR: accel_dim_out is not 0x04!" severity failure;
+        report "TEST 1 OK: Default reset value ACCEL_DIM = 4 verified." severity note;
 
-        -- 2. TESZT: ACCEL_DIM (0x08) írása (N = 8) és visszaolvasása
+        -- ---------------------------------------------------------------------
+        -- TEST 2: Write ACCEL_DIM (0x08, N=8) and verify readback
+        -- ---------------------------------------------------------------------
         axi_write(x"08", x"00000008");
         axi_read(x"08", read_data);
         assert read_data = x"00000008"
-            report "2. TESZT HIBA: ACCEL_DIM visszaolvasott ertek hibas!" severity failure;
+            report "TEST 2 ERROR: ACCEL_DIM readback mismatch!" severity failure;
         assert accel_dim_out = x"08"
-            report "2. TESZT HIBA: accel_dim_out nem frissult 0x08-ra!" severity failure;
-        report "2. TESZT OK: ACCEL_DIM iras es visszaolvasas (N=8) sikeres." severity note;
+            report "TEST 2 ERROR: accel_dim_out was not updated to 0x08!" severity failure;
+        report "TEST 2 OK: ACCEL_DIM write and readback (N=8) verified." severity note;
 
-        -- 3. TESZT: ACCEL_CR (0x00) írása (START = 1, IE = 1 -> 0x00000005) és auto-clear ellenőrzése
+        -- ---------------------------------------------------------------------
+        -- TEST 3: Write ACCEL_CR (0x00, START=1, IE=1 -> 0x00000005) and verify auto-clear
+        -- ---------------------------------------------------------------------
         wait until rising_edge(s_axi_aclk);
         s_axi_awaddr  <= x"00";
         s_axi_awvalid <= '1';
@@ -192,37 +198,39 @@ begin
         s_axi_wvalid  <= '1';
         s_axi_bready  <= '1';
 
-        -- Megvárjuk, amíg a Slave felhúzza az AWREADY és WREADY jeleket (T2 órajel után):
+        -- Wait until Slave asserts AWREADY and WREADY (after T2 clock cycle):
         wait until s_axi_awready = '1' and s_axi_wready = '1';
         wait for 1 ns;
-        -- Ebben az órajelciklusban az accel_start_out-nak '1'-nek kell lennie:
+        -- In this clock cycle, accel_start_out must be asserted ('1'):
         assert accel_start_out = '1'
-            report "3. TESZT HIBA: accel_start_out nem ugrott 1-be!" severity failure;
+            report "TEST 3 ERROR: accel_start_out did not assert!" severity failure;
 
-        -- A kézfogás órajel-felfutóéle (T3): itt veszi át a Master a nyugtát,
-        -- és a Slave-ben UGYANEKKOR törlődik automatikusan 0-ba a START bit!
+        -- Handshake rising edge (T3): Master acknowledges completion,
+        -- and the Slave simultaneously clears the START bit to '0'!
         wait until rising_edge(s_axi_aclk);
         s_axi_awvalid <= '0';
         s_axi_wvalid  <= '0';
         s_axi_bready  <= '0';
         wait for 1 ns;
         assert accel_start_out = '0'
-            report "3. TESZT HIBA: accel_start_out nem torlodott automatikusan 1 orajel utan!" severity failure;
+            report "TEST 3 ERROR: accel_start_out was not automatically cleared after 1 cycle!" severity failure;
 
-        -- Visszaolvasva a CR regisztert csak az IE bit (0x04) maradhat 1-ben:
+        -- Reading back CR register must show only the IE bit (0x04) set:
         axi_read(x"00", read_data);
         assert read_data = x"00000004"
-            report "3. TESZT HIBA: ACCEL_CR-ben az IE bit nem maradt 1, vagy a START nem torlodott!" severity failure;
-        report "3. TESZT OK: START impulzus (1 orajel auto-clear) es IE bit mukodese helyes." severity note;
+            report "TEST 3 ERROR: IE bit was not retained in ACCEL_CR, or START did not clear!" severity failure;
+        report "TEST 3 OK: START pulse (1-cycle auto-clear) and IE bit behavior verified." severity note;
 
-        -- 4. TESZT: Gyorsító működés szimulálása (BUSY, CYCLES, DONE és IRQ)
+        -- ---------------------------------------------------------------------
+        -- TEST 4: Simulate accelerator operation (BUSY, CYCLES, DONE, and IRQ)
+        -- ---------------------------------------------------------------------
         accel_busy_in   <= '1';
-        accel_cycles_in <= x"000001A4"; -- 420 órajelciklus
+        accel_cycles_in <= x"000001A4"; -- 420 clock cycles
         axi_read(x"04", read_data);
         assert read_data = x"00000001"
-            report "4. TESZT HIBA: ACCEL_SR BUSY bit nem 1!" severity failure;
+            report "TEST 4 ERROR: ACCEL_SR BUSY bit is not set!" severity failure;
 
-        -- Gyorsító végez: 1 órajeles DONE impulzus
+        -- Accelerator finishes calculation: 1-cycle DONE pulse
         wait until rising_edge(s_axi_aclk);
         accel_busy_in <= '0';
         accel_done_in <= '1';
@@ -230,29 +238,31 @@ begin
         accel_done_in <= '0';
         wait for 1 ns;
 
-        -- DONE flag-nek és az IRQ kimenetnek 1-ben kell maradnia (mert IE=1)
+        -- DONE flag and IRQ output must remain asserted (since IE=1)
         assert irq_out = '1'
-            report "4. TESZT HIBA: irq_out nem aktiválódott DONE utan!" severity failure;
+            report "TEST 4 ERROR: irq_out was not asserted after DONE!" severity failure;
 
         axi_read(x"04", read_data);
         assert read_data = x"00000002"
-            report "4. TESZT HIBA: ACCEL_SR DONE bit (bit 1) nem 1!" severity failure;
+            report "TEST 4 ERROR: ACCEL_SR DONE bit (bit 1) is not set!" severity failure;
 
         axi_read(x"0C", read_data);
         assert read_data = x"000001A4"
-            report "4. TESZT HIBA: ACCEL_CYCLES erteke nem 0x000001A4!" severity failure;
-        report "4. TESZT OK: ACCEL_SR (BUSY/DONE), ACCEL_CYCLES es irq_out mukodese helyes." severity note;
+            report "TEST 4 ERROR: ACCEL_CYCLES value is not 0x000001A4!" severity failure;
+        report "TEST 4 OK: ACCEL_SR (BUSY/DONE), ACCEL_CYCLES, and irq_out verified." severity note;
 
-        -- 5. TESZT: Új START kiadásával a DONE flag és az IRQ törlődik
-        axi_write(x"00", x"00000005"); -- Új START
+        -- ---------------------------------------------------------------------
+        -- TEST 5: Clear DONE flag and IRQ by issuing a new START pulse
+        -- ---------------------------------------------------------------------
+        axi_write(x"00", x"00000005"); -- New START
         wait until rising_edge(s_axi_aclk);
         wait for 1 ns;
         assert irq_out = '0'
-            report "5. TESZT HIBA: Uj START utan a done_flag / irq_out nem torlodott!" severity failure;
-        report "5. TESZT OK: Uj START hatasara a DONE flag es az IRQ torlodott." severity note;
+            report "TEST 5 ERROR: done_flag / irq_out was not cleared after new START!" severity failure;
+        report "TEST 5 OK: DONE flag and IRQ successfully cleared on new START." severity note;
 
         report "=========================================================" severity note;
-        report "MINDEN AXI4-LITE SLAVE TESZT SIKERESEN LEFUTOTT (PASS)!" severity note;
+        report "ALL AXI4-LITE SLAVE TESTS PASSED (PASS)!" severity note;
         report "=========================================================" severity note;
 
         sim_done <= true;
